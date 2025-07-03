@@ -2,11 +2,14 @@ use regex::Regex;
 use std::path::Path;
 use vfs::VfsPath;
 
-use crate::types::{Context, Parser};
-use crate::{
-    JS_EXTENSIONS, Node, NodeKind, ensure_folders, is_node_builtin, resolve_alias_import,
-    resolve_relative_import,
+use crate::logger::log_error;
+use crate::types::js::{
+    JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
+use crate::types::{Context, Parser};
+use crate::{Node, NodeKind, ensure_folders};
+
+pub(crate) const HTML_EXTENSIONS: &[&str] = &["html"];
 
 pub struct HtmlParser;
 
@@ -25,7 +28,7 @@ impl Parser for HtmlParser {
         let src = match path.read_to_string() {
             Ok(s) => s,
             Err(e) => {
-                crate::log_error(ctx.color, &format!("failed to read {}: {e}", path.as_str()));
+                log_error(ctx.color, &format!("failed to read {}: {e}", path.as_str()));
                 return Ok(());
             }
         };

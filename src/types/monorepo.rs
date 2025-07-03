@@ -69,4 +69,40 @@ mod tests {
         assert!(names.contains(&"a"));
         assert!(names.contains(&"b"));
     }
+
+    #[test]
+    fn test_package_nodes_and_edges() {
+        let fs = TestFS::new([
+            (
+                "packages/a/package.json",
+                b"{\"name\":\"a\",\"main\":\"index.js\",\"dependencies\":{\"b\":\"workspace:*\",\"ext\":\"1\"}}" as &[u8]
+            ),
+            ("packages/a/index.js", b"" as &[u8]),
+            ("packages/b/package.json", b"{\"name\":\"b\"}" as &[u8]),
+        ]);
+        let root = fs.root();
+
+        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let a_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)
+            .unwrap();
+        let b_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "b" && graph[*i].kind == crate::NodeKind::Package)
+            .unwrap();
+        let main_idx = graph
+            .node_indices()
+            .find(|i| {
+                graph[*i].name == "packages/a/index.js" && graph[*i].kind == crate::NodeKind::File
+            })
+            .unwrap();
+        assert!(graph.find_edge(a_idx, b_idx).is_some());
+        assert!(graph.find_edge(a_idx, main_idx).is_some());
+        assert!(
+            graph
+                .node_indices()
+                .any(|i| graph[i].name == "ext" && graph[i].kind == crate::NodeKind::External)
+        );
+    }
 }

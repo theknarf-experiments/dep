@@ -195,4 +195,12 @@ mod tests {
         let res = crate::build_dependency_graph(&root, Default::default());
         assert!(res.is_ok());
     }
+
+    #[test]
+    fn test_malformed_package_json_is_ignored() {
+        let fs = TestFS::new([("pkg/package.json", "notjson")]);
+        let root = fs.root();
+        let res = crate::build_dependency_graph(&root, Default::default());
+        assert!(res.is_ok());
+    }
 }

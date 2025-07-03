@@ -2,7 +2,8 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::path::Path;
 use vfs::{VfsFileType, VfsPath};
 
-use crate::{HTML_EXTENSIONS, JS_EXTENSIONS};
+use crate::types::html::HTML_EXTENSIONS;
+use crate::types::js::JS_EXTENSIONS;
 const SPECIAL_FILES: &[&str] = &["package.json", "pnpm-workspace.yml", "tsconfig.json"];
 
 fn load_gitignore(root: &VfsPath) -> anyhow::Result<Option<Gitignore>> {
@@ -118,5 +119,18 @@ mod tests {
         let missing = root.join("missing").unwrap();
         let files = collect_files(&missing, false).unwrap();
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_recursive_with_gitignore() {
+        let fs = TestFS::new([
+            (".gitignore", "ignored.js\n"),
+            ("foo/a.js", "import '../bar/b.js';\nimport 'fs';"),
+            ("bar/b.js", ""),
+            ("ignored.js", ""),
+        ]);
+        let root = fs.root();
+        let files = collect_files(&root, false).unwrap();
+        assert!(files.iter().all(|p| !p.as_str().ends_with("ignored.js")));
     }
 }
