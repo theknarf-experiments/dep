@@ -20,6 +20,7 @@ glob = "0.3"
 rayon = "1"
 num_cpus = "1"
 colored = "2"
+jsonc-parser = { version = "0.26", features = ["serde"] }
 
 [dev-dependencies]
 proptest = "1"

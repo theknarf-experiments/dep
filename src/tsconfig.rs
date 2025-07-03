@@ -1,3 +1,5 @@
+use jsonc_parser::ParseOptions;
+use jsonc_parser::parse_to_serde_value;
 use serde::Deserialize;
 use std::collections::HashMap;
 use vfs::VfsPath;
@@ -28,13 +30,23 @@ pub fn load_tsconfig_aliases(
                     return Ok(Vec::new());
                 }
             };
-            let tsconfig: TsConfigFile = match serde_json::from_str(&contents) {
-                Ok(v) => v,
-                Err(e) => {
-                    crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
-                    return Ok(Vec::new());
-                }
-            };
+            let tsconfig: TsConfigFile =
+                match parse_to_serde_value(&contents, &ParseOptions::default()) {
+                    Ok(Some(value)) => match serde_json::from_value(value) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
+                            return Ok(Vec::new());
+                        }
+                    },
+                    Ok(None) => TsConfigFile {
+                        compiler_options: None,
+                    },
+                    Err(e) => {
+                        crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
+                        return Ok(Vec::new());
+                    }
+                };
             if let Some(opts) = tsconfig.compiler_options {
                 let base = opts.base_url.as_deref().unwrap_or(".");
                 let base_path = root.join(base)?;
@@ -68,6 +80,31 @@ mod tests {
             (
                 "tsconfig.json",
                 b"{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": { \"@foo/*\": [\"foo/*\"] }\n  }\n}" as &[u8],
+            ),
+            ("index.ts", b"import '@foo/bar';" as &[u8]),
+            ("foo/bar.ts", b"" as &[u8]),
+        ]);
+        let root = fs.root();
+
+        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+
+        let idx_index = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+        let idx_target = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+        assert!(graph.find_edge(idx_index, idx_target).is_some());
+    }
+
+    #[test]
+    fn test_tsconfig_jsonc_with_comments() {
+        let fs = TestFS::new([
+            (
+                "tsconfig.json",
+                b"{\n  // comment\n  \"compilerOptions\": {\n    /* base */ \"baseUrl\": \".\",\n    \"paths\": { \"@foo/*\": [\"foo/*\",] }\n  }\n}" as &[u8],
             ),
             ("index.ts", b"import '@foo/bar';" as &[u8]),
             ("foo/bar.ts", b"" as &[u8]),
