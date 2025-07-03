@@ -116,7 +116,7 @@ pub fn build_dependency_graph(
     if opts.verbose {
         log_verbose(opts.color, &format!("found {} files", files.len()));
     }
-    let aliases = load_tsconfig_aliases(root)?;
+    let aliases = load_tsconfig_aliases(root, opts.color)?;
     let ctx = types::Context {
         data: data.clone(),
         root_idx,

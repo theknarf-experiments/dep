@@ -15,11 +15,26 @@ struct CompilerOptions {
     paths: Option<HashMap<String, Vec<String>>>,
 }
 
-pub fn load_tsconfig_aliases(root: &VfsPath) -> anyhow::Result<Vec<(String, VfsPath)>> {
+pub fn load_tsconfig_aliases(
+    root: &VfsPath,
+    color: bool,
+) -> anyhow::Result<Vec<(String, VfsPath)>> {
     if let Ok(path) = root.join("tsconfig.json") {
         if path.exists()? {
-            let contents = path.read_to_string()?;
-            let tsconfig: TsConfigFile = serde_json::from_str(&contents)?;
+            let contents = match path.read_to_string() {
+                Ok(c) => c,
+                Err(e) => {
+                    crate::log_error(color, &format!("failed to read {}: {e}", path.as_str()));
+                    return Ok(Vec::new());
+                }
+            };
+            let tsconfig: TsConfigFile = match serde_json::from_str(&contents) {
+                Ok(v) => v,
+                Err(e) => {
+                    crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
+                    return Ok(Vec::new());
+                }
+            };
             if let Some(opts) = tsconfig.compiler_options {
                 let base = opts.base_url.as_deref().unwrap_or(".");
                 let base_path = root.join(base)?;
@@ -70,5 +85,13 @@ mod tests {
             .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_target).is_some());
+    }
+
+    #[test]
+    fn test_malformed_tsconfig_does_not_fail() {
+        let fs = TestFS::new([("tsconfig.json", "not json"), ("index.ts", "")]);
+        let root = fs.root();
+        let res = build_dependency_graph(&root, Default::default());
+        assert!(res.is_ok());
     }
 }

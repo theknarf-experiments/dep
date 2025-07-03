@@ -299,6 +299,15 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_file_missing() {
+        let fs = TestFS::new([("a.js", "")]);
+        let root = fs.root();
+        let missing = root.join("missing.js").unwrap();
+        let imports = parse_file(&missing, false).unwrap();
+        assert!(imports.is_empty());
+    }
+
+    #[test]
     fn test_collect_imports_from_string() {
         let src =
             "import foo from './foo';\nexport * from './bar';\nexport { baz } from './baz.js';";

@@ -171,7 +171,6 @@ impl Parser for PackageDepsParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::test_util::TestFS;
 
     #[test]

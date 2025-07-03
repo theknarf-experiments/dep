@@ -47,6 +47,17 @@ pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>
                 continue;
             }
         };
+        let rel = path
+            .as_str()
+            .strip_prefix(root_str)
+            .unwrap_or(path.as_str())
+            .trim_start_matches('/');
+        if rel == "node_modules"
+            || rel.starts_with("node_modules/")
+            || rel.contains("/node_modules/")
+        {
+            continue;
+        }
         let meta = match path.metadata() {
             Ok(m) => m,
             Err(e) => {
@@ -57,11 +68,6 @@ pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>
         if meta.file_type != VfsFileType::File {
             continue;
         }
-        let rel = path
-            .as_str()
-            .strip_prefix(root_str)
-            .unwrap_or(path.as_str())
-            .trim_start_matches('/');
         if let Some(gi) = &gitignore {
             if gi
                 .matched_path_or_any_parents(Path::new(rel), false)
@@ -132,5 +138,18 @@ mod tests {
         let root = fs.root();
         let files = collect_files(&root, false).unwrap();
         assert!(files.iter().all(|p| !p.as_str().ends_with("ignored.js")));
+    }
+
+    #[test]
+    fn test_skip_node_modules() {
+        let fs = TestFS::new([("src/a.js", ""), ("node_modules/b.js", "")]);
+        let root = fs.root();
+        let files = collect_files(&root, false).unwrap();
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
+            .collect();
+        assert!(names.contains(&"a.js"));
+        assert!(!names.contains(&"b.js"));
     }
 }
