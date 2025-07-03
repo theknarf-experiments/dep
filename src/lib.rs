@@ -186,6 +186,8 @@ pub fn build_dependency_graph(
 mod tests {
     use super::*;
     use crate::test_util::TestFS;
+    use crate::types::js::JS_EXTENSIONS;
+    use proptest::prelude::*;
 
     #[test]
     fn test_build_dependency_graph_memoryfs() {
@@ -202,5 +204,33 @@ mod tests {
             .find(|i| graph[*i].name == "b.js" && graph[*i].kind == NodeKind::File)
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
+    }
+
+    proptest! {
+        #[test]
+        fn prop_end_to_end(ext_a in proptest::sample::select(JS_EXTENSIONS), ext_b in proptest::sample::select(JS_EXTENSIONS)) {
+            let entries = vec![
+                ("proj/.gitignore".to_string(), b"ignored/".to_vec()),
+                (format!("proj/src/main.{ext_a}"), format!("import '../lib/util.{ext_b}';").into_bytes()),
+                (format!("proj/lib/util.{ext_b}"), Vec::new()),
+                ("proj/ignored/skip.js".to_string(), Vec::new()),
+            ];
+            let fs = TestFS::new(entries.iter().map(|(p,c)| (p.as_str(), c.as_slice())));
+            let path = fs.root().join("proj").unwrap();
+            let graph = build_dependency_graph(&path, Default::default()).unwrap();
+
+            let main_rel = format!("src/main.{ext_a}");
+            let util_rel = format!("lib/util.{ext_b}");
+            let main_idx = graph
+                .node_indices()
+                .find(|i| graph[*i].name == main_rel && graph[*i].kind == NodeKind::File)
+                .unwrap();
+            let util_idx = graph
+                .node_indices()
+                .find(|i| graph[*i].name == util_rel && graph[*i].kind == NodeKind::File)
+                .unwrap();
+            prop_assert!(graph.find_edge(main_idx, util_idx).is_some());
+            prop_assert!(!graph.node_indices().any(|i| graph[i].name.contains("ignored")));
+        }
     }
 }
