@@ -6,3 +6,20 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
 petgraph = "0.8.2"
+swc_ecma_parser = "0.145.0"
+swc_ecma_ast = "0.114.0"
+swc_common = "0.33.26"
+anyhow = "1.0"
+vfs = "0.12.1"
+ignore = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1"
+serde_yaml = "0.9"
+glob = "0.3"
+rayon = "1"
+num_cpus = "1"
+colored = "2"
+
+[dev-dependencies]
+proptest = "1"
