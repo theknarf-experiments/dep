@@ -88,6 +88,44 @@ mod tests {
     }
 
     #[test]
+    fn test_alias_and_relative_refer_to_same_file() {
+        let fs = TestFS::new([
+            (
+                "tsconfig.json",
+                b"{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": { \"@lib/*\": [\"lib/*\"] }\n  }\n}" as &[u8],
+            ),
+            ("a.ts", b"import './lib/c';" as &[u8]),
+            ("b.ts", b"import '@lib/c';" as &[u8]),
+            ("lib/c.ts", b"" as &[u8]),
+        ]);
+        let root = fs.root();
+
+        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+
+        let idx_a = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+        let idx_b = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "b.ts" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+        let idx_c = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "lib/c.ts" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+
+        let file_nodes: Vec<_> = graph
+            .node_indices()
+            .filter(|i| graph[*i].kind == NodeKind::File)
+            .collect();
+        assert_eq!(file_nodes.len(), 3);
+
+        assert!(graph.find_edge(idx_a, idx_c).is_some());
+        assert!(graph.find_edge(idx_b, idx_c).is_some());
+    }
+
+    #[test]
     fn test_malformed_tsconfig_does_not_fail() {
         let fs = TestFS::new([("tsconfig.json", "not json"), ("index.ts", "")]);
         let root = fs.root();
