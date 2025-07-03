@@ -1,10 +1,24 @@
-use petgraph::dot::{Config, Dot};
 use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::{Node, NodeKind};
+
+fn node_attrs(kind: &NodeKind) -> (&'static str, Option<&'static str>) {
+    match kind {
+        NodeKind::File => ("box", None),
+        NodeKind::External => ("ellipse", Some("lightblue")),
+        NodeKind::Builtin => ("diamond", Some("gray")),
+        NodeKind::Folder => ("folder", Some("lightgrey")),
+        NodeKind::Asset => ("note", Some("yellow")),
+        NodeKind::Package => ("box3d", Some("orange")),
+    }
+}
+
+fn escape_label(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
 
 /// Convert a dependency graph to Graphviz dot format.
 pub fn graph_to_dot(
@@ -37,7 +51,32 @@ pub fn graph_to_dot(
             filtered.add_edge(s, t, ());
         }
     }
-    format!("{:?}", Dot::with_config(&filtered, &[Config::EdgeNoLabel]))
+
+    let mut out = String::from("digraph {\n");
+    for i in filtered.node_indices() {
+        let node = &filtered[i];
+        let (shape, color) = node_attrs(&node.kind);
+        let label = escape_label(&node.name);
+        out.push_str(&format!(
+            "    {} [label=\"{}\", shape={}",
+            i.index(),
+            label,
+            shape
+        ));
+        if let Some(c) = color {
+            out.push_str(&format!(", style=filled, fillcolor=\"{}\"", c));
+        }
+        out.push_str("]\n");
+    }
+    for e in filtered.edge_references() {
+        out.push_str(&format!(
+            "    {} -> {}\n",
+            e.source().index(),
+            e.target().index()
+        ));
+    }
+    out.push_str("}\n");
+    out
 }
 
 #[derive(Serialize)]
@@ -112,10 +151,10 @@ mod tests {
 
         let without = graph_to_dot(&graph, true, true, false, true, true);
         assert!(without.contains("foo/bar.js"));
-        assert!(!without.contains("Folder"));
+        assert!(!without.contains("shape=folder"));
 
         let with = graph_to_dot(&graph, true, true, true, true, true);
-        assert!(with.contains("kind: Folder"));
+        assert!(with.contains("shape=folder"));
     }
 
     #[test]
