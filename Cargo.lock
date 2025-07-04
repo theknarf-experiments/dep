@@ -258,6 +258,7 @@ dependencies = [
  "colored",
  "glob",
  "ignore",
+ "jsonc-parser",
  "num_cpus",
  "petgraph",
  "proptest",
@@ -595,6 +596,15 @@ name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+
+[[package]]
+name = "jsonc-parser"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b558af6b49fd918e970471374e7a798b2c9bbcda624a210ffa3901ee5614bc8e"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "lazy_static"
