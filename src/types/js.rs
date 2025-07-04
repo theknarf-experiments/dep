@@ -209,7 +209,8 @@ impl Parser for JsParser {
                 idx
             };
             if data.graph.find_edge(parent_idx, from_idx).is_none() {
-                data.graph.add_edge(parent_idx, from_idx, ());
+                data.graph
+                    .add_edge(parent_idx, from_idx, crate::Edge::default());
             }
         }
         let dir = path.parent();
@@ -269,7 +270,8 @@ impl Parser for JsParser {
                 data.nodes.insert(key, idx);
                 idx
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            data.graph
+                .add_edge(from_idx, to_idx, crate::Edge::default());
         }
         Ok(())
     }
