@@ -50,6 +50,10 @@ struct Args {
     #[arg(long, default_value_t = true)]
     include_packages: bool,
 
+    /// Node names to ignore from output
+    #[arg(long = "ignore-node")]
+    ignore_nodes: Vec<String>,
+
     /// Output file path
     #[arg(long, default_value = "out.dot")]
     output: PathBuf,
@@ -98,6 +102,7 @@ fn main() -> anyhow::Result<()> {
         args.include_folders,
         args.include_assets,
         args.include_packages,
+        &args.ignore_nodes,
     );
     use dep::NodeKind;
     use petgraph::visit::EdgeRef;
