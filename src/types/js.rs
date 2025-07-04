@@ -4,7 +4,7 @@ use vfs::VfsPath;
 
 use crate::logger::log_error;
 use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::{EdgeMetadata, Node, NodeKind, ensure_folders};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
 use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConfig};
@@ -209,7 +209,8 @@ impl Parser for JsParser {
                 idx
             };
             if data.graph.find_edge(parent_idx, from_idx).is_none() {
-                data.graph.add_edge(parent_idx, from_idx, ());
+                data.graph
+                    .add_edge(parent_idx, from_idx, EdgeMetadata::default());
             }
         }
         let dir = path.parent();
@@ -269,7 +270,8 @@ impl Parser for JsParser {
                 data.nodes.insert(key, idx);
                 idx
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            data.graph
+                .add_edge(from_idx, to_idx, EdgeMetadata::default());
         }
         Ok(())
     }

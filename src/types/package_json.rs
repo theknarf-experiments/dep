@@ -4,7 +4,7 @@ use std::path::Path;
 use vfs::VfsPath;
 
 use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::{EdgeMetadata, Node, NodeKind, ensure_folders};
 
 #[derive(Deserialize)]
 struct RawPackage {
@@ -79,9 +79,11 @@ impl Parser for PackageMainParser {
                         i
                     };
                     if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                        data.graph.add_edge(parent_idx, file_idx, ());
+                        data.graph
+                            .add_edge(parent_idx, file_idx, EdgeMetadata::default());
                     }
-                    data.graph.add_edge(pkg_idx, file_idx, ());
+                    data.graph
+                        .add_edge(pkg_idx, file_idx, EdgeMetadata::default());
                 }
             }
         }
@@ -148,7 +150,8 @@ impl Parser for PackageDepsParser {
                     data.nodes.insert(key, i);
                     i
                 };
-                data.graph.add_edge(pkg_idx, to_idx, ());
+                data.graph
+                    .add_edge(pkg_idx, to_idx, EdgeMetadata::default());
             } else {
                 let mut data = ctx.data.lock().unwrap();
                 let key = (dep.clone(), NodeKind::External);
@@ -162,7 +165,8 @@ impl Parser for PackageDepsParser {
                     data.nodes.insert(key, i);
                     i
                 };
-                data.graph.add_edge(pkg_idx, to_idx, ());
+                data.graph
+                    .add_edge(pkg_idx, to_idx, EdgeMetadata::default());
             }
         }
         Ok(())

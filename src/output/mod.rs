@@ -3,7 +3,7 @@ use petgraph::visit::EdgeRef;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use crate::{Node, NodeKind};
+use crate::{EdgeMetadata, Node, NodeKind};
 
 fn node_attrs(kind: &NodeKind) -> (&'static str, Option<&'static str>) {
     match kind {
@@ -22,14 +22,14 @@ fn escape_label(s: &str) -> String {
 
 /// Filter a dependency graph according to output options.
 pub fn filter_graph(
-    graph: &DiGraph<Node, ()>,
+    graph: &DiGraph<Node, EdgeMetadata>,
     include_external: bool,
     include_builtin: bool,
     include_folders: bool,
     include_assets: bool,
     include_packages: bool,
-) -> DiGraph<Node, ()> {
-    let mut filtered = DiGraph::new();
+) -> DiGraph<Node, EdgeMetadata> {
+    let mut filtered: DiGraph<Node, EdgeMetadata> = DiGraph::new();
     let mut map = HashMap::new();
     for idx in graph.node_indices() {
         let node = &graph[idx];
@@ -48,16 +48,14 @@ pub fn filter_graph(
     }
     for edge in graph.edge_references() {
         if let (Some(&s), Some(&t)) = (map.get(&edge.source()), map.get(&edge.target())) {
-            filtered.add_edge(s, t, ());
+            filtered.add_edge(s, t, edge.weight().clone());
         }
     }
     filtered
 }
 
 /// Convert a dependency graph to Graphviz dot format.
-pub fn graph_to_dot(
-    graph: &DiGraph<Node, ()>,
-) -> String {
+pub fn graph_to_dot(graph: &DiGraph<Node, EdgeMetadata>) -> String {
     let mut out = String::from("digraph {\n");
     for i in graph.node_indices() {
         let node = &graph[i];
@@ -75,33 +73,48 @@ pub fn graph_to_dot(
         out.push_str("]\n");
     }
     for e in graph.edge_references() {
-        out.push_str(&format!(
-            "    {} -> {}\n",
-            e.source().index(),
-            e.target().index()
-        ));
+        if e.weight().same_as {
+            out.push_str(&format!(
+                "    {} -> {} [style=dashed]\n",
+                e.source().index(),
+                e.target().index()
+            ));
+        } else {
+            out.push_str(&format!(
+                "    {} -> {}\n",
+                e.source().index(),
+                e.target().index()
+            ));
+        }
     }
     out.push_str("}\n");
     out
 }
 
 #[derive(Serialize)]
+struct JsonEdge {
+    from: usize,
+    to: usize,
+    #[serde(flatten)]
+    meta: EdgeMetadata,
+}
+
+#[derive(Serialize)]
 struct JsonGraph {
     nodes: Vec<Node>,
-    edges: Vec<(usize, usize)>,
+    edges: Vec<JsonEdge>,
 }
 
 /// Convert a dependency graph to JSON format.
-pub fn graph_to_json(
-    graph: &DiGraph<Node, ()>,
-) -> String {
-    let nodes: Vec<Node> = graph
-        .node_indices()
-        .map(|i| graph[i].clone())
-        .collect();
-    let edges: Vec<(usize, usize)> = graph
+pub fn graph_to_json(graph: &DiGraph<Node, EdgeMetadata>) -> String {
+    let nodes: Vec<Node> = graph.node_indices().map(|i| graph[i].clone()).collect();
+    let edges: Vec<JsonEdge> = graph
         .edge_references()
-        .map(|e| (e.source().index(), e.target().index()))
+        .map(|e| JsonEdge {
+            from: e.source().index(),
+            to: e.target().index(),
+            meta: e.weight().clone(),
+        })
         .collect();
     serde_json::to_string_pretty(&JsonGraph { nodes, edges }).unwrap()
 }
@@ -129,25 +142,11 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(folder_idx, file_idx).is_some());
 
-        let without = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            true,
-            true,
-        ));
+        let without = graph_to_dot(&filter_graph(&graph, true, true, false, true, true));
         assert!(without.contains("foo/bar.js"));
         assert!(!without.contains("shape=folder"));
 
-        let with = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            true,
-            true,
-            true,
-        ));
+        let with = graph_to_dot(&filter_graph(&graph, true, true, true, true, true));
         assert!(with.contains("shape=folder"));
     }
 
@@ -167,23 +166,9 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(js_idx, css_idx).is_some());
 
-        let without = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            false,
-            true,
-        ));
+        let without = graph_to_dot(&filter_graph(&graph, true, true, false, false, true));
         assert!(!without.contains("style.css"));
-        let with = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            true,
-            true,
-        ));
+        let with = graph_to_dot(&filter_graph(&graph, true, true, false, true, true));
         assert!(with.contains("style.css"));
     }
 
@@ -192,14 +177,7 @@ mod tests {
         let fs = TestFS::new([("index.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
         let graph = build_dependency_graph(&root, Default::default()).unwrap();
-        let json = graph_to_json(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            true,
-            true,
-        ));
+        let json = graph_to_json(&filter_graph(&graph, true, true, false, true, true));
         assert!(json.contains("index.js"));
         assert!(json.contains("b.js"));
     }
@@ -213,18 +191,18 @@ mod tests {
             include_assets in any::<bool>(),
             include_packages in any::<bool>(),
         ) {
-            let mut g = DiGraph::new();
+            let mut g: DiGraph<Node, EdgeMetadata> = DiGraph::new();
             let file = g.add_node(Node { name: "file.js".into(), kind: NodeKind::File });
             let ext = g.add_node(Node { name: "ext".into(), kind: NodeKind::External });
             let builtin = g.add_node(Node { name: "builtin".into(), kind: NodeKind::Builtin });
             let folder = g.add_node(Node { name: "folder".into(), kind: NodeKind::Folder });
             let asset = g.add_node(Node { name: "asset.css".into(), kind: NodeKind::Asset });
             let pkg = g.add_node(Node { name: "pkg".into(), kind: NodeKind::Package });
-            g.add_edge(file, ext, ());
-            g.add_edge(file, builtin, ());
-            g.add_edge(file, folder, ());
-            g.add_edge(file, asset, ());
-            g.add_edge(file, pkg, ());
+            g.add_edge(file, ext, EdgeMetadata::default());
+            g.add_edge(file, builtin, EdgeMetadata::default());
+            g.add_edge(file, folder, EdgeMetadata::default());
+            g.add_edge(file, asset, EdgeMetadata::default());
+            g.add_edge(file, pkg, EdgeMetadata::default());
 
             let filtered = filter_graph(
                 &g,

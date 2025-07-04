@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use vfs::VfsPath;
 
-use crate::{Node, NodeKind};
+use crate::{EdgeMetadata, Node, NodeKind};
 
 #[derive(Debug)]
 pub struct GraphCtx {
-    pub graph: DiGraph<Node, ()>,
+    pub graph: DiGraph<Node, EdgeMetadata>,
     pub nodes: HashMap<(String, NodeKind), NodeIndex>,
 }
 
@@ -26,6 +26,7 @@ pub trait Parser: Send + Sync {
 }
 
 pub mod html;
+pub mod index;
 pub mod js;
 pub mod monorepo;
 pub mod package_json;

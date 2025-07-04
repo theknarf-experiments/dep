@@ -49,6 +49,16 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct EdgeMetadata {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub same_as: bool,
+}
+
 #[derive(Clone, Copy)]
 pub struct BuildOptions {
     pub workers: Option<usize>,
@@ -94,7 +104,8 @@ pub(crate) fn ensure_folders(
                 i
             };
             if data.graph.find_edge(parent_idx, idx).is_none() {
-                data.graph.add_edge(parent_idx, idx, ());
+                data.graph
+                    .add_edge(parent_idx, idx, EdgeMetadata::default());
             }
             parent_idx = idx;
         }
@@ -106,7 +117,7 @@ pub(crate) fn ensure_folders(
 pub fn build_dependency_graph(
     root: &VfsPath,
     opts: BuildOptions,
-) -> anyhow::Result<DiGraph<Node, ()>> {
+) -> anyhow::Result<DiGraph<Node, EdgeMetadata>> {
     let data = Arc::new(Mutex::new(types::GraphCtx {
         graph: DiGraph::new(),
         nodes: HashMap::new(),
@@ -142,6 +153,7 @@ pub fn build_dependency_graph(
         Box::new(PackageMainParser),
         Box::new(PackageDepsParser),
         Box::new(types::js::JsParser),
+        Box::new(types::index::IndexParser),
         Box::new(types::html::HtmlParser),
     ];
     let workers = opts.workers.unwrap_or_else(|| num_cpus::get());
@@ -246,5 +258,25 @@ mod tests {
             prop_assert!(graph.find_edge(main_idx, util_idx).is_some());
             prop_assert!(!graph.node_indices().any(|i| graph[i].name.contains("ignored")));
         }
+    }
+
+    #[test]
+    fn test_index_same_as_edge() {
+        let fs = TestFS::new([("foo/index.js", "")]);
+        let root = fs.root();
+        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let folder_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "foo" && graph[*i].kind == NodeKind::Folder)
+            .unwrap();
+        let file_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "foo/index.js" && graph[*i].kind == NodeKind::File)
+            .unwrap();
+        assert!(
+            graph
+                .edges_connecting(folder_idx, file_idx)
+                .any(|e| e.weight().same_as)
+        );
     }
 }

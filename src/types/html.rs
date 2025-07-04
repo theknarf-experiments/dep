@@ -7,7 +7,7 @@ use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::{EdgeMetadata, Node, NodeKind, ensure_folders};
 
 pub(crate) const HTML_EXTENSIONS: &[&str] = &["html"];
 
@@ -53,7 +53,8 @@ impl Parser for HtmlParser {
                 i
             };
             if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                data.graph.add_edge(parent_idx, file_idx, ());
+                data.graph
+                    .add_edge(parent_idx, file_idx, EdgeMetadata::default());
             }
         }
         let re = Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).unwrap();
@@ -115,7 +116,8 @@ impl Parser for HtmlParser {
                 data.nodes.insert(key, i);
                 i
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            data.graph
+                .add_edge(from_idx, to_idx, EdgeMetadata::default());
         }
         Ok(())
     }

@@ -1,7 +1,7 @@
-use crate::Node;
+use crate::{EdgeMetadata, Node};
 use petgraph::graph::{DiGraph, NodeIndex};
 
-pub fn prune_unconnected(graph: &mut DiGraph<Node, ()>) {
+pub fn prune_unconnected(graph: &mut DiGraph<Node, EdgeMetadata>) {
     loop {
         let mut removed = false;
         let nodes: Vec<NodeIndex> = graph.node_indices().collect();
@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn test_prune_unconnected() {
-        let mut g: DiGraph<Node, ()> = DiGraph::new();
+        let mut g: DiGraph<Node, EdgeMetadata> = DiGraph::new();
         let a = g.add_node(Node {
             name: "a".into(),
             kind: NodeKind::File,
@@ -39,7 +39,7 @@ mod tests {
             name: "b".into(),
             kind: NodeKind::File,
         });
-        g.add_edge(a, b, ());
+        g.add_edge(a, b, EdgeMetadata::default());
         let _c = g.add_node(Node {
             name: "c".into(),
             kind: NodeKind::File,
