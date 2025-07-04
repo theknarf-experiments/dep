@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use vfs::VfsPath;
 
 pub mod output;
-pub use output::{graph_to_dot, graph_to_json};
+pub use output::{filter_graph, graph_to_dot, graph_to_json};
 pub mod types;
 use types::package_json::{PackageDepsParser, PackageMainParser};
 mod analysis;
@@ -27,6 +27,20 @@ pub enum NodeKind {
     Folder,
     Asset,
     Package,
+}
+
+impl std::fmt::Display for NodeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            NodeKind::File => "file",
+            NodeKind::External => "external",
+            NodeKind::Builtin => "builtin",
+            NodeKind::Folder => "folder",
+            NodeKind::Asset => "asset",
+            NodeKind::Package => "package",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]

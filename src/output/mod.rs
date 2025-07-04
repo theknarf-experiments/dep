@@ -20,15 +20,15 @@ fn escape_label(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Convert a dependency graph to Graphviz dot format.
-pub fn graph_to_dot(
+/// Filter a dependency graph according to output options.
+pub fn filter_graph(
     graph: &DiGraph<Node, ()>,
     include_external: bool,
     include_builtin: bool,
     include_folders: bool,
     include_assets: bool,
     include_packages: bool,
-) -> String {
+) -> DiGraph<Node, ()> {
     let mut filtered = DiGraph::new();
     let mut map = HashMap::new();
     for idx in graph.node_indices() {
@@ -51,10 +51,16 @@ pub fn graph_to_dot(
             filtered.add_edge(s, t, ());
         }
     }
+    filtered
+}
 
+/// Convert a dependency graph to Graphviz dot format.
+pub fn graph_to_dot(
+    graph: &DiGraph<Node, ()>,
+) -> String {
     let mut out = String::from("digraph {\n");
-    for i in filtered.node_indices() {
-        let node = &filtered[i];
+    for i in graph.node_indices() {
+        let node = &graph[i];
         let (shape, color) = node_attrs(&node.kind);
         let label = escape_label(&node.name);
         out.push_str(&format!(
@@ -68,7 +74,7 @@ pub fn graph_to_dot(
         }
         out.push_str("]\n");
     }
-    for e in filtered.edge_references() {
+    for e in graph.edge_references() {
         out.push_str(&format!(
             "    {} -> {}\n",
             e.source().index(),
@@ -88,39 +94,12 @@ struct JsonGraph {
 /// Convert a dependency graph to JSON format.
 pub fn graph_to_json(
     graph: &DiGraph<Node, ()>,
-    include_external: bool,
-    include_builtin: bool,
-    include_folders: bool,
-    include_assets: bool,
-    include_packages: bool,
 ) -> String {
-    let mut filtered = DiGraph::new();
-    let mut map = HashMap::new();
-    for idx in graph.node_indices() {
-        let node = &graph[idx];
-        let keep = match node.kind {
-            NodeKind::External => include_external,
-            NodeKind::Builtin => include_builtin,
-            NodeKind::File => true,
-            NodeKind::Folder => include_folders,
-            NodeKind::Asset => include_assets,
-            NodeKind::Package => include_packages,
-        };
-        if keep {
-            let nidx = filtered.add_node(node.clone());
-            map.insert(idx, nidx);
-        }
-    }
-    for edge in graph.edge_references() {
-        if let (Some(&s), Some(&t)) = (map.get(&edge.source()), map.get(&edge.target())) {
-            filtered.add_edge(s, t, ());
-        }
-    }
-    let nodes: Vec<Node> = filtered
+    let nodes: Vec<Node> = graph
         .node_indices()
-        .map(|i| filtered[i].clone())
+        .map(|i| graph[i].clone())
         .collect();
-    let edges: Vec<(usize, usize)> = filtered
+    let edges: Vec<(usize, usize)> = graph
         .edge_references()
         .map(|e| (e.source().index(), e.target().index()))
         .collect();
@@ -132,6 +111,7 @@ mod tests {
     use super::*;
     use crate::build_dependency_graph;
     use crate::test_util::TestFS;
+    use proptest::prelude::*;
 
     #[test]
     fn test_folder_nodes() {
@@ -149,11 +129,25 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(folder_idx, file_idx).is_some());
 
-        let without = graph_to_dot(&graph, true, true, false, true, true);
+        let without = graph_to_dot(&filter_graph(
+            &graph,
+            true,
+            true,
+            false,
+            true,
+            true,
+        ));
         assert!(without.contains("foo/bar.js"));
         assert!(!without.contains("shape=folder"));
 
-        let with = graph_to_dot(&graph, true, true, true, true, true);
+        let with = graph_to_dot(&filter_graph(
+            &graph,
+            true,
+            true,
+            true,
+            true,
+            true,
+        ));
         assert!(with.contains("shape=folder"));
     }
 
@@ -173,9 +167,23 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(js_idx, css_idx).is_some());
 
-        let without = graph_to_dot(&graph, true, true, false, false, true);
+        let without = graph_to_dot(&filter_graph(
+            &graph,
+            true,
+            true,
+            false,
+            false,
+            true,
+        ));
         assert!(!without.contains("style.css"));
-        let with = graph_to_dot(&graph, true, true, false, true, true);
+        let with = graph_to_dot(&filter_graph(
+            &graph,
+            true,
+            true,
+            false,
+            true,
+            true,
+        ));
         assert!(with.contains("style.css"));
     }
 
@@ -184,8 +192,61 @@ mod tests {
         let fs = TestFS::new([("index.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
         let graph = build_dependency_graph(&root, Default::default()).unwrap();
-        let json = graph_to_json(&graph, true, true, false, true, true);
+        let json = graph_to_json(&filter_graph(
+            &graph,
+            true,
+            true,
+            false,
+            true,
+            true,
+        ));
         assert!(json.contains("index.js"));
         assert!(json.contains("b.js"));
+    }
+
+    proptest! {
+        #[test]
+        fn prop_filter_graph(
+            include_external in any::<bool>(),
+            include_builtin in any::<bool>(),
+            include_folders in any::<bool>(),
+            include_assets in any::<bool>(),
+            include_packages in any::<bool>(),
+        ) {
+            let mut g = DiGraph::new();
+            let file = g.add_node(Node { name: "file.js".into(), kind: NodeKind::File });
+            let ext = g.add_node(Node { name: "ext".into(), kind: NodeKind::External });
+            let builtin = g.add_node(Node { name: "builtin".into(), kind: NodeKind::Builtin });
+            let folder = g.add_node(Node { name: "folder".into(), kind: NodeKind::Folder });
+            let asset = g.add_node(Node { name: "asset.css".into(), kind: NodeKind::Asset });
+            let pkg = g.add_node(Node { name: "pkg".into(), kind: NodeKind::Package });
+            g.add_edge(file, ext, ());
+            g.add_edge(file, builtin, ());
+            g.add_edge(file, folder, ());
+            g.add_edge(file, asset, ());
+            g.add_edge(file, pkg, ());
+
+            let filtered = filter_graph(
+                &g,
+                include_external,
+                include_builtin,
+                include_folders,
+                include_assets,
+                include_packages,
+            );
+
+            prop_assert!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::File));
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::External), include_external);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Builtin), include_builtin);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Folder), include_folders);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Asset), include_assets);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Package), include_packages);
+            let expected_edges = include_external as usize
+                + include_builtin as usize
+                + include_folders as usize
+                + include_assets as usize
+                + include_packages as usize;
+            prop_assert_eq!(filtered.edge_count(), expected_edges);
+        }
     }
 }
