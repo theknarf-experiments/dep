@@ -28,11 +28,17 @@ pub fn filter_graph(
     include_folders: bool,
     include_assets: bool,
     include_packages: bool,
+    ignore_nodes: &[String],
 ) -> DiGraph<Node, ()> {
     let mut filtered = DiGraph::new();
     let mut map = HashMap::new();
+    use std::collections::HashSet;
+    let ignore: HashSet<&str> = ignore_nodes.iter().map(|s| s.as_str()).collect();
     for idx in graph.node_indices() {
         let node = &graph[idx];
+        if ignore.contains(node.name.as_str()) {
+            continue;
+        }
         let keep = match node.kind {
             NodeKind::External => include_external,
             NodeKind::Builtin => include_builtin,
@@ -55,9 +61,7 @@ pub fn filter_graph(
 }
 
 /// Convert a dependency graph to Graphviz dot format.
-pub fn graph_to_dot(
-    graph: &DiGraph<Node, ()>,
-) -> String {
+pub fn graph_to_dot(graph: &DiGraph<Node, ()>) -> String {
     let mut out = String::from("digraph {\n");
     for i in graph.node_indices() {
         let node = &graph[i];
@@ -92,13 +96,8 @@ struct JsonGraph {
 }
 
 /// Convert a dependency graph to JSON format.
-pub fn graph_to_json(
-    graph: &DiGraph<Node, ()>,
-) -> String {
-    let nodes: Vec<Node> = graph
-        .node_indices()
-        .map(|i| graph[i].clone())
-        .collect();
+pub fn graph_to_json(graph: &DiGraph<Node, ()>) -> String {
+    let nodes: Vec<Node> = graph.node_indices().map(|i| graph[i].clone()).collect();
     let edges: Vec<(usize, usize)> = graph
         .edge_references()
         .map(|e| (e.source().index(), e.target().index()))
@@ -129,25 +128,11 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(folder_idx, file_idx).is_some());
 
-        let without = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            true,
-            true,
-        ));
+        let without = graph_to_dot(&filter_graph(&graph, true, true, false, true, true, &[]));
         assert!(without.contains("foo/bar.js"));
         assert!(!without.contains("shape=folder"));
 
-        let with = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            true,
-            true,
-            true,
-        ));
+        let with = graph_to_dot(&filter_graph(&graph, true, true, true, true, true, &[]));
         assert!(with.contains("shape=folder"));
     }
 
@@ -167,23 +152,9 @@ mod tests {
             .unwrap();
         assert!(graph.find_edge(js_idx, css_idx).is_some());
 
-        let without = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            false,
-            true,
-        ));
+        let without = graph_to_dot(&filter_graph(&graph, true, true, false, false, true, &[]));
         assert!(!without.contains("style.css"));
-        let with = graph_to_dot(&filter_graph(
-            &graph,
-            true,
-            true,
-            false,
-            true,
-            true,
-        ));
+        let with = graph_to_dot(&filter_graph(&graph, true, true, false, true, true, &[]));
         assert!(with.contains("style.css"));
     }
 
@@ -192,16 +163,27 @@ mod tests {
         let fs = TestFS::new([("index.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
         let graph = build_dependency_graph(&root, Default::default()).unwrap();
-        let json = graph_to_json(&filter_graph(
+        let json = graph_to_json(&filter_graph(&graph, true, true, false, true, true, &[]));
+        assert!(json.contains("index.js"));
+        assert!(json.contains("b.js"));
+    }
+
+    #[test]
+    fn test_ignore_nodes() {
+        let fs = TestFS::new([("a.js", ""), ("b.js", "")]);
+        let root = fs.root();
+        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let dot = graph_to_dot(&filter_graph(
             &graph,
             true,
             true,
             false,
             true,
             true,
+            &["b.js".to_string()],
         ));
-        assert!(json.contains("index.js"));
-        assert!(json.contains("b.js"));
+        assert!(dot.contains("a.js"));
+        assert!(!dot.contains("b.js"));
     }
 
     proptest! {
@@ -233,6 +215,7 @@ mod tests {
                 include_folders,
                 include_assets,
                 include_packages,
+                &[],
             );
 
             prop_assert!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::File));
