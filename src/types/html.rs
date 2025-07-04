@@ -53,7 +53,8 @@ impl Parser for HtmlParser {
                 i
             };
             if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                data.graph.add_edge(parent_idx, file_idx, ());
+                data.graph
+                    .add_edge(parent_idx, file_idx, crate::Edge::default());
             }
         }
         let re = Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).unwrap();
@@ -115,7 +116,8 @@ impl Parser for HtmlParser {
                 data.nodes.insert(key, i);
                 i
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            data.graph
+                .add_edge(from_idx, to_idx, crate::Edge::default());
         }
         Ok(())
     }

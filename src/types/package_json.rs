@@ -79,9 +79,11 @@ impl Parser for PackageMainParser {
                         i
                     };
                     if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                        data.graph.add_edge(parent_idx, file_idx, ());
+                        data.graph
+                            .add_edge(parent_idx, file_idx, crate::Edge::default());
                     }
-                    data.graph.add_edge(pkg_idx, file_idx, ());
+                    data.graph
+                        .add_edge(pkg_idx, file_idx, crate::Edge::default());
                 }
             }
         }
@@ -148,7 +150,7 @@ impl Parser for PackageDepsParser {
                     data.nodes.insert(key, i);
                     i
                 };
-                data.graph.add_edge(pkg_idx, to_idx, ());
+                data.graph.add_edge(pkg_idx, to_idx, crate::Edge::default());
             } else {
                 let mut data = ctx.data.lock().unwrap();
                 let key = (dep.clone(), NodeKind::External);
@@ -162,7 +164,7 @@ impl Parser for PackageDepsParser {
                     data.nodes.insert(key, i);
                     i
                 };
-                data.graph.add_edge(pkg_idx, to_idx, ());
+                data.graph.add_edge(pkg_idx, to_idx, crate::Edge::default());
             }
         }
         Ok(())

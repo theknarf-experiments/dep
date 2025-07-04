@@ -49,6 +49,12 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Edge {
+    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
+    pub metadata: HashMap<String, String>,
+}
+
 #[derive(Clone, Copy)]
 pub struct BuildOptions {
     pub workers: Option<usize>,
@@ -94,7 +100,7 @@ pub(crate) fn ensure_folders(
                 i
             };
             if data.graph.find_edge(parent_idx, idx).is_none() {
-                data.graph.add_edge(parent_idx, idx, ());
+                data.graph.add_edge(parent_idx, idx, Edge::default());
             }
             parent_idx = idx;
         }
@@ -106,7 +112,7 @@ pub(crate) fn ensure_folders(
 pub fn build_dependency_graph(
     root: &VfsPath,
     opts: BuildOptions,
-) -> anyhow::Result<DiGraph<Node, ()>> {
+) -> anyhow::Result<DiGraph<Node, Edge>> {
     let data = Arc::new(Mutex::new(types::GraphCtx {
         graph: DiGraph::new(),
         nodes: HashMap::new(),
@@ -141,6 +147,7 @@ pub fn build_dependency_graph(
     let parsers: Vec<Box<dyn types::Parser>> = vec![
         Box::new(PackageMainParser),
         Box::new(PackageDepsParser),
+        Box::new(types::index_file::IndexFileParser),
         Box::new(types::js::JsParser),
         Box::new(types::html::HtmlParser),
     ];
