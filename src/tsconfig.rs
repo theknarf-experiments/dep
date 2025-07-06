@@ -28,7 +28,10 @@ pub fn load_tsconfig_aliases(
             let contents = match path.read_to_string() {
                 Ok(c) => c,
                 Err(e) => {
-                    logger.log(LogLevel::Error, &format!("failed to read {}: {e}", path.as_str()));
+                    logger.log(
+                        LogLevel::Error,
+                        &format!("failed to read {}: {e}", path.as_str()),
+                    );
                     return Ok(Vec::new());
                 }
             };
@@ -37,7 +40,10 @@ pub fn load_tsconfig_aliases(
                     Ok(Some(value)) => match serde_json::from_value(value) {
                         Ok(v) => v,
                         Err(e) => {
-                            logger.log(LogLevel::Error, &format!("failed to parse tsconfig.json: {e}"));
+                            logger.log(
+                                LogLevel::Error,
+                                &format!("failed to parse tsconfig.json: {e}"),
+                            );
                             return Ok(Vec::new());
                         }
                     },
@@ -45,7 +51,10 @@ pub fn load_tsconfig_aliases(
                         compiler_options: None,
                     },
                     Err(e) => {
-                        logger.log(LogLevel::Error, &format!("failed to parse tsconfig.json: {e}"));
+                        logger.log(
+                            LogLevel::Error,
+                            &format!("failed to parse tsconfig.json: {e}"),
+                        );
                         return Ok(Vec::new());
                     }
                 };
@@ -88,7 +97,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = build_dependency_graph(&walk, None, &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -113,7 +123,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = build_dependency_graph(&walk, None, &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -139,7 +150,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = build_dependency_graph(&walk, None, &logger).unwrap();
 
         let idx_a = graph
             .node_indices()
@@ -169,7 +181,8 @@ mod tests {
         let fs = TestFS::new([("tsconfig.json", "not json"), ("index.ts", "")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = build_dependency_graph(&root, None, &logger);
+        let walk = crate::WalkBuilder::new(&root).build();
+        let res = build_dependency_graph(&walk, None, &logger);
         assert!(res.is_ok());
     }
 }

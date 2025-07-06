@@ -1,8 +1,8 @@
 use vfs::VfsPath;
 
-use crate::types::package_util::{find_packages, Package};
-use crate::types::{Context, Edge, Parser};
 use crate::Logger;
+use crate::types::package_util::{Package, find_packages};
+use crate::types::{Context, Edge, Parser};
 
 pub struct MonorepoParser;
 
@@ -84,7 +84,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = crate::build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)

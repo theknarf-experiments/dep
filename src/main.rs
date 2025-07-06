@@ -41,6 +41,10 @@ struct Args {
     #[arg(long = "ignore-node")]
     ignore_nodes: Vec<String>,
 
+    /// File or folder patterns to ignore when scanning
+    #[arg(long = "ignore", name = "PATTERN")]
+    ignore_paths: Vec<String>,
+
     /// Output file path
     #[arg(long, default_value = "out.dot")]
     output: PathBuf,
@@ -77,7 +81,10 @@ fn main() -> anyhow::Result<()> {
         color: args.color,
         verbose: args.verbose,
     };
-    let mut graph = dep::build_dependency_graph(&root, args.workers, &logger)?;
+    let walk = dep::WalkBuilder::new(&root)
+        .ignore_patterns(&args.ignore_paths)
+        .build();
+    let mut graph = dep::build_dependency_graph(&walk, args.workers, &logger)?;
     if args.prune {
         let before = graph.node_count();
         dep::prune_unconnected(&mut graph);

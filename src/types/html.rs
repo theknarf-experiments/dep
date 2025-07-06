@@ -26,7 +26,10 @@ impl Parser for HtmlParser {
         let src = match path.read_to_string() {
             Ok(s) => s,
             Err(e) => {
-                ctx.logger.log(LogLevel::Error, &format!("failed to read {}: {e}", path.as_str()));
+                ctx.logger.log(
+                    LogLevel::Error,
+                    &format!("failed to read {}: {e}", path.as_str()),
+                );
                 return Ok(Vec::new());
             }
         };
@@ -114,7 +117,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let html_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.html" && graph[*i].kind == NodeKind::File)
@@ -134,7 +138,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = build_dependency_graph(&root, None, &logger);
+        let walk = crate::WalkBuilder::new(&root).build();
+        let res = build_dependency_graph(&walk, None, &logger);
         assert!(res.is_ok());
     }
 }

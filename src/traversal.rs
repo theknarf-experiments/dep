@@ -1,99 +1,170 @@
 use bstr::ByteSlice;
 use gix_ignore::{glob::pattern::Case, search::Match, Search};
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use vfs::{VfsFileType, VfsPath};
 
 use crate::{LogLevel, Logger};
 
-/// Recursively collect all files starting from `root` while respecting `.gitignore`.
+/// Builder for creating [`Walk`] instances.
+pub struct WalkBuilder<'a> {
+    root: &'a VfsPath,
+    patterns: Vec<String>,
+}
 
-pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<VfsPath>> {
-    let root_str = root.as_str().trim_end_matches('/');
-    let root_path = if root_str.is_empty() { Path::new("/") } else { Path::new(root_str) };
-
-    let mut search = Search::default();
-    let mut visited_dirs: HashSet<String> = HashSet::new();
-
-    fn ignored(search: &Search, mut rel: &str, mut is_dir: bool) -> bool {
-        loop {
-            if let Some(Match { pattern, .. }) =
-                search.pattern_matching_relative_path(rel.as_bytes().as_bstr(), Some(is_dir), Case::Sensitive)
-            {
-                return !pattern.is_negative();
-            }
-            if let Some(pos) = rel.rfind('/') {
-                rel = &rel[..pos];
-                is_dir = true;
-            } else {
-                break;
-            }
-        }
-        false
-    }
-
-    // Load root .gitignore if present
-    if let Ok(gi_path) = root.join(".gitignore") {
-        if gi_path.exists().unwrap_or(false) {
-            if let Ok(contents) = gi_path.read_to_string() {
-                search.add_patterns_buffer(contents.as_bytes(), PathBuf::from(gi_path.as_str()), Some(root_path));
-            }
+impl<'a> WalkBuilder<'a> {
+    /// Create a new builder with the given root directory.
+    pub fn new(root: &'a VfsPath) -> Self {
+        Self {
+            root,
+            // ignore .git folders by default
+            patterns: vec![".git/".to_string()],
         }
     }
 
-    let mut files = Vec::new();
-    let walk = match root.walk_dir() {
-        Ok(w) => w,
-        Err(e) => {
-            logger.log(LogLevel::Error, &format!("failed to walk {}: {e}", root.as_str()));
-            return Ok(files);
+    /// Add ignore patterns. Patterns use gitignore syntax.
+    pub fn ignore_patterns(mut self, pats: &[String]) -> Self {
+        self.patterns.extend_from_slice(pats);
+        self
+    }
+
+    /// Build a [`Walk`] using the collected options.
+    pub fn build(self) -> Walk<'a> {
+        Walk {
+            root: self.root,
+            patterns: self.patterns,
         }
-    };
-    for entry in walk {
-        let path = match entry {
-            Ok(p) => p,
-            Err(e) => {
-                logger.log(LogLevel::Error, &format!("walk error: {e}"));
-                continue;
-            }
+    }
+}
+
+/// File tree walker that respects `.gitignore`, `.git` folders and custom
+/// ignore patterns.
+pub struct Walk<'a> {
+    root: &'a VfsPath,
+    patterns: Vec<String>,
+}
+
+impl<'a> Walk<'a> {
+    /// Return the root path for this walk.
+    pub fn root(&self) -> &VfsPath {
+        self.root
+    }
+
+    /// Recursively collect all files starting from the walk root while
+    /// respecting `.gitignore`, `.git` folders and the configured ignore
+    /// patterns.
+    pub fn collect_files(&self, logger: &dyn Logger) -> anyhow::Result<Vec<VfsPath>> {
+        let root = self.root;
+        let patterns = &self.patterns;
+
+        let root_str = root.as_str().trim_end_matches('/');
+        let root_path = if root_str.is_empty() {
+            Path::new("/")
+        } else {
+            Path::new(root_str)
         };
 
-        let parent = path.parent();
-        if visited_dirs.insert(parent.as_str().to_string()) {
-            if let Ok(gi) = parent.join(".gitignore") {
-                if gi.exists().unwrap_or(false) {
-                    if let Ok(contents) = gi.read_to_string() {
-                        search.add_patterns_buffer(contents.as_bytes(), PathBuf::from(gi.as_str()), Some(root_path));
-                    }
+        let mut search = Search::default();
+
+        for pat in patterns {
+            let buf = format!("{}\n", pat);
+            search.add_patterns_buffer(buf.as_bytes(), root_path.join("_cli_ignore"), Some(root_path));
+        }
+
+        fn ignored(search: &Search, mut rel: &str, mut is_dir: bool) -> bool {
+            loop {
+                if let Some(Match { pattern, .. }) = search.pattern_matching_relative_path(
+                    rel.as_bytes().as_bstr(),
+                    Some(is_dir),
+                    Case::Sensitive,
+                ) {
+                    return !pattern.is_negative();
+                }
+                if let Some(pos) = rel.rfind('/') {
+                    rel = &rel[..pos];
+                    is_dir = true;
+                } else {
+                    break;
+                }
+            }
+            false
+        }
+
+        // Load root .gitignore if present
+        if let Ok(gi_path) = root.join(".gitignore") {
+            if gi_path.exists().unwrap_or(false) {
+                if let Ok(contents) = gi_path.read_to_string() {
+                    search.add_patterns_buffer(
+                        contents.as_bytes(),
+                        PathBuf::from(gi_path.as_str()),
+                        Some(root_path),
+                    );
                 }
             }
         }
 
-        let rel = path
-            .as_str()
-            .strip_prefix(root_str)
-            .unwrap_or(path.as_str())
-            .trim_start_matches('/');
-
-        let meta = match path.metadata() {
-            Ok(m) => m,
+        let mut files = Vec::new();
+        let walk = match root.walk_dir() {
+            Ok(w) => w,
             Err(e) => {
-                logger.log(LogLevel::Error, &format!("metadata error on {}: {e}", path.as_str()));
-                continue;
+                logger.log(
+                    LogLevel::Error,
+                    &format!("failed to walk {}: {e}", root.as_str()),
+                );
+                return Ok(files);
             }
         };
+        for entry in walk {
+            let path = match entry {
+                Ok(p) => p,
+                Err(e) => {
+                    logger.log(LogLevel::Error, &format!("walk error: {e}"));
+                    continue;
+                }
+            };
 
-        if meta.file_type != VfsFileType::File {
-            continue;
+            let rel = path
+                .as_str()
+                .strip_prefix(root_str)
+                .unwrap_or(path.as_str())
+                .trim_start_matches('/');
+
+            let meta = match path.metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    logger.log(
+                        LogLevel::Error,
+                        &format!("metadata error on {}: {e}", path.as_str()),
+                    );
+                    continue;
+                }
+            };
+
+            if meta.file_type == VfsFileType::Directory {
+                if ignored(&search, rel, true) {
+                    continue;
+                }
+                if let Ok(gi) = path.join(".gitignore") {
+                    if gi.exists().unwrap_or(false) {
+                        if let Ok(contents) = gi.read_to_string() {
+                            search.add_patterns_buffer(
+                                contents.as_bytes(),
+                                PathBuf::from(gi.as_str()),
+                                Some(root_path),
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if ignored(&search, rel, false) {
+                continue;
+            }
+
+            files.push(path);
         }
-
-        if ignored(&search, rel, false) {
-            continue;
-        }
-
-        files.push(path);
+        Ok(files)
     }
-    Ok(files)
 }
 
 #[cfg(test)]
@@ -111,7 +182,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let files = collect_files(&root, &logger).unwrap();
+        let walk = WalkBuilder::new(&root).build();
+        let files = walk.collect_files(&logger).unwrap();
         let names: Vec<_> = files
             .iter()
             .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
@@ -130,7 +202,8 @@ mod tests {
         let root = fs.root();
         let missing = root.join("missing").unwrap();
         let logger = crate::EmptyLogger;
-        let files = collect_files(&missing, &logger).unwrap();
+        let walk = WalkBuilder::new(&missing).build();
+        let files = walk.collect_files(&logger).unwrap();
         assert!(files.is_empty());
     }
 
@@ -144,7 +217,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let files = collect_files(&root, &logger).unwrap();
+        let walk = WalkBuilder::new(&root).build();
+        let files = walk.collect_files(&logger).unwrap();
         assert!(files.iter().all(|p| !p.as_str().ends_with("ignored.js")));
     }
 
@@ -158,7 +232,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let files = collect_files(&root, &logger).unwrap();
+        let walk = WalkBuilder::new(&root).build();
+        let files = walk.collect_files(&logger).unwrap();
         let names: Vec<_> = files
             .iter()
             .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
@@ -182,7 +257,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let files = collect_files(&root, &logger).unwrap();
+        let walk = WalkBuilder::new(&root).build();
+        let files = walk.collect_files(&logger).unwrap();
         let paths: Vec<_> = files.iter().map(|p| p.as_str()).collect();
         assert!(paths.contains(&"/b.js"));
         assert!(paths.contains(&"/.gitignore"));
@@ -191,5 +267,34 @@ mod tests {
         assert!(paths.contains(&"/sub/c.js"));
         assert!(!paths.contains(&"/a.js"));
         assert!(!paths.contains(&"/sub/b.js"));
+    }
+
+    #[test]
+    fn test_custom_ignore_patterns() {
+        let fs = TestFS::new([("a.js", ""), ("ignored/b.js", "")]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let walk = WalkBuilder::new(&root)
+            .ignore_patterns(&["ignored/".to_string()])
+            .build();
+        let files = walk.collect_files(&logger).unwrap();
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
+            .collect();
+        assert!(names.contains(&"a.js"));
+        assert!(!names.contains(&"b.js"));
+    }
+
+    #[test]
+    fn test_ignore_git_folder() {
+        let fs = TestFS::new([(".git/config", ""), ("a.js", "")]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let walk = WalkBuilder::new(&root).build();
+        let files = walk.collect_files(&logger).unwrap();
+        let paths: Vec<_> = files.iter().map(|p| p.as_str()).collect();
+        assert!(paths.contains(&"/a.js"));
+        assert!(!paths.iter().any(|p| p.contains("/.git/")));
     }
 }

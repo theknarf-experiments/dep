@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use vfs::VfsPath;
-
 pub mod analysis;
 pub mod output;
 pub use analysis::{filter_graph, prune_unconnected};
@@ -15,6 +13,7 @@ use types::package_json::{PackageDepsParser, PackageMainParser};
 
 mod logger;
 mod traversal;
+pub use traversal::{Walk, WalkBuilder};
 mod tsconfig;
 pub use logger::{ConsoleLogger, EmptyLogger, LogLevel, Logger};
 use tsconfig::load_tsconfig_aliases;
@@ -87,12 +86,13 @@ pub(crate) fn ensure_folders(
 
 /// Build a dependency graph of all JS/TS files within `root`.
 pub fn build_dependency_graph(
-    root: &VfsPath,
+    walk: &Walk,
     workers: Option<usize>,
     logger: &dyn Logger,
 ) -> anyhow::Result<DiGraph<Node, ()>> {
-    let files = traversal::collect_files(root, logger)?;
+    let files = walk.collect_files(logger)?;
     logger.log(LogLevel::Debug, &format!("found {} files", files.len()));
+    let root = walk.root();
     let aliases = load_tsconfig_aliases(root, logger)?;
     let ctx = types::Context {
         root,
@@ -246,7 +246,8 @@ mod tests {
         let root = fs.root();
 
         let logger = EmptyLogger;
-        let graph = build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = WalkBuilder::new(&root).build();
+        let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a.js" && graph[*i].kind == NodeKind::File)
@@ -270,7 +271,8 @@ mod tests {
             let fs = TestFS::new(entries.iter().map(|(p,c)| (p.as_str(), c.as_slice())));
             let path = fs.root().join("proj").unwrap();
             let logger = EmptyLogger;
-            let graph = build_dependency_graph(&path, None, &logger).unwrap();
+            let walk = WalkBuilder::new(&path).build();
+            let graph = build_dependency_graph(&walk, None, &logger).unwrap();
 
             let main_rel = format!("src/main.{ext_a}");
             let util_rel = format!("lib/util.{ext_b}");
