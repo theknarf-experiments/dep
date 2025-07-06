@@ -22,11 +22,11 @@ impl std::fmt::Display for OutputType {
 pub use dot::graph_to_dot;
 pub use json::graph_to_json;
 
-use crate::Node;
+use crate::{Node, EdgeType};
 use petgraph::graph::DiGraph;
 
 /// Render the dependency graph in the requested [`OutputType`].
-pub fn graph_to_string(format: OutputType, graph: &DiGraph<Node, ()>) -> String {
+pub fn graph_to_string(format: OutputType, graph: &DiGraph<Node, EdgeType>) -> String {
     match format {
         OutputType::Dot => graph_to_dot(graph),
         OutputType::Json => graph_to_json(graph),

@@ -50,6 +50,12 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum EdgeType {
+    Regular,
+    SameAs,
+}
+
 pub(crate) fn ensure_folders(
     rel: &str,
     data: &mut types::GraphCtx,
@@ -76,7 +82,7 @@ pub(crate) fn ensure_folders(
                 i
             };
             if data.graph.find_edge(parent_idx, idx).is_none() {
-                data.graph.add_edge(parent_idx, idx, ());
+                data.graph.add_edge(parent_idx, idx, EdgeType::Regular);
             }
             parent_idx = idx;
         }
@@ -89,7 +95,7 @@ pub fn build_dependency_graph(
     walk: &Walk,
     workers: Option<usize>,
     logger: &dyn Logger,
-) -> anyhow::Result<DiGraph<Node, ()>> {
+) -> anyhow::Result<DiGraph<Node, EdgeType>> {
     let files = walk.collect_files(logger)?;
     logger.log(LogLevel::Debug, &format!("found {} files", files.len()));
     let root = walk.root();
@@ -102,6 +108,7 @@ pub fn build_dependency_graph(
     let parsers: Vec<Box<dyn types::Parser>> = vec![
         Box::new(PackageMainParser),
         Box::new(PackageDepsParser),
+        Box::new(types::index::IndexParser),
         Box::new(types::js::JsParser),
         Box::new(types::html::HtmlParser),
     ];
@@ -181,7 +188,7 @@ pub fn build_dependency_graph(
             i
         };
         if data.graph.find_edge(parent_idx, idx).is_none() {
-            data.graph.add_edge(parent_idx, idx, ());
+            data.graph.add_edge(parent_idx, idx, EdgeType::Regular);
         }
     }
 
@@ -198,7 +205,7 @@ pub fn build_dependency_graph(
                     i
                 };
                 if d.graph.find_edge(parent_idx, idx).is_none() {
-                    d.graph.add_edge(parent_idx, idx, ());
+                    d.graph.add_edge(parent_idx, idx, EdgeType::Regular);
                 }
                 idx
             }
@@ -218,7 +225,7 @@ pub fn build_dependency_graph(
     for e in edges.lock().unwrap().iter() {
         let from_idx = ensure_node(&e.from, &mut data);
         let to_idx = ensure_node(&e.to, &mut data);
-        data.graph.add_edge(from_idx, to_idx, ());
+        data.graph.add_edge(from_idx, to_idx, e.kind.clone());
     }
 
     let res = data.graph;

@@ -1,7 +1,7 @@
 use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 
-use crate::{Node, NodeKind};
+use crate::{Node, NodeKind, EdgeType};
 
 fn node_attrs(kind: &NodeKind) -> (&'static str, Option<&'static str>) {
     match kind {
@@ -19,7 +19,7 @@ fn escape_label(s: &str) -> String {
 }
 
 /// Convert a dependency graph to Graphviz dot format.
-pub fn graph_to_dot(graph: &DiGraph<Node, ()>) -> String {
+pub fn graph_to_dot(graph: &DiGraph<Node, EdgeType>) -> String {
     let mut out = String::from("digraph {\n");
     for i in graph.node_indices() {
         let node = &graph[i];
@@ -37,10 +37,15 @@ pub fn graph_to_dot(graph: &DiGraph<Node, ()>) -> String {
         out.push_str("]\n");
     }
     for e in graph.edge_references() {
+        let style = match e.weight() {
+            EdgeType::SameAs => " [style=dashed]",
+            _ => "",
+        };
         out.push_str(&format!(
-            "    {} -> {}\n",
+            "    {} -> {}{}\n",
             e.source().index(),
-            e.target().index()
+            e.target().index(),
+            style
         ));
     }
     out.push_str("}\n");

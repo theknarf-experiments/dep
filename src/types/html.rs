@@ -7,7 +7,7 @@ use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Edge, Parser};
-use crate::{Node, NodeKind};
+use crate::{Node, NodeKind, EdgeType};
 
 pub struct HtmlParser;
 
@@ -97,6 +97,7 @@ impl Parser for HtmlParser {
             edges.push(Edge {
                 from: from_node.clone(),
                 to: to_node,
+                kind: EdgeType::Regular,
             });
         }
         Ok(edges)
