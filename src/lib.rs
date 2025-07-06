@@ -107,33 +107,12 @@ pub fn build_dependency_graph(
     root: &VfsPath,
     opts: BuildOptions,
 ) -> anyhow::Result<DiGraph<Node, ()>> {
-    let data = Arc::new(Mutex::new(types::GraphCtx {
-        graph: DiGraph::new(),
-        nodes: HashMap::new(),
-    }));
-    let root_idx = {
-        let mut d = data.lock().unwrap();
-        let key = ("".to_string(), NodeKind::Folder);
-        if let Some(&idx) = d.nodes.get(&key) {
-            idx
-        } else {
-            let idx = d.graph.add_node(Node {
-                name: "".to_string(),
-                kind: NodeKind::Folder,
-            });
-            d.nodes.insert(key, idx);
-            idx
-        }
-    };
-
     let files = traversal::collect_files(root, opts.color)?;
     if opts.verbose {
         log_verbose(opts.color, &format!("found {} files", files.len()));
     }
     let aliases = load_tsconfig_aliases(root, opts.color)?;
     let ctx = types::Context {
-        data: data.clone(),
-        root_idx,
         root,
         aliases: &aliases,
         color: opts.color,
@@ -148,31 +127,121 @@ pub fn build_dependency_graph(
     if opts.verbose {
         log_verbose(opts.color, &format!("using {} worker threads", workers));
     }
+    let edges: Arc<Mutex<Vec<types::Edge>>> = Arc::new(Mutex::new(Vec::new()));
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(workers)
         .build()?;
+    let mut parsed_files = Vec::new();
     pool.scope(|s| {
-        for path in files {
+        for path in &files {
             let parsers = &parsers;
             let ctx = &ctx;
             let verbose = opts.verbose;
+            let edges = edges.clone();
+            let path_clone = path.clone();
+            let should_parse = parsers.iter().any(|p| p.can_parse(&path_clone));
+            if should_parse {
+                parsed_files.push(path_clone.clone());
+            }
             s.spawn(move |_| {
                 if verbose {
-                    log_verbose(ctx.color, &format!("file: {}", path.as_str()));
+                    log_verbose(ctx.color, &format!("file: {}", path_clone.as_str()));
                 }
                 for p in parsers {
-                    if p.can_parse(&path) {
+                    if p.can_parse(&path_clone) {
                         if verbose {
                             log_verbose(ctx.color, &format!("  parser {}", p.name()));
                         }
-                        let _ = p.parse(&path, ctx);
+                        match p.parse(&path_clone, ctx) {
+                            Ok(mut es) => {
+                                if !es.is_empty() {
+                                    let mut lock = edges.lock().unwrap();
+                                    lock.extend(es.drain(..));
+                                }
+                            }
+                            Err(_) => {}
+                        }
                     }
                 }
             });
         }
     });
-    drop(ctx);
-    let mut res = Arc::try_unwrap(data).unwrap().into_inner().unwrap().graph;
+
+    let mut data = types::GraphCtx {
+        graph: DiGraph::new(),
+        nodes: HashMap::new(),
+    };
+    let root_idx = {
+        let key = ("".to_string(), NodeKind::Folder);
+        let idx = data.graph.add_node(Node {
+            name: "".to_string(),
+            kind: NodeKind::Folder,
+        });
+        data.nodes.insert(key, idx);
+        idx
+    };
+
+    let root_str = root.as_str().trim_end_matches('/');
+    for path in &parsed_files {
+        let rel = path
+            .as_str()
+            .strip_prefix(root_str)
+            .unwrap_or(path.as_str())
+            .trim_start_matches('/');
+        let parent_idx = ensure_folders(rel, &mut data, root_idx);
+        let key = (rel.to_string(), NodeKind::File);
+        let idx = if let Some(&i) = data.nodes.get(&key) {
+            i
+        } else {
+            let i = data.graph.add_node(Node {
+                name: rel.to_string(),
+                kind: NodeKind::File,
+            });
+            data.nodes.insert(key, i);
+            i
+        };
+        if data.graph.find_edge(parent_idx, idx).is_none() {
+            data.graph.add_edge(parent_idx, idx, ());
+        }
+    }
+
+    let ensure_node = |n: &Node, d: &mut types::GraphCtx| -> NodeIndex {
+        match n.kind {
+            NodeKind::File | NodeKind::Asset => {
+                let parent_idx = ensure_folders(&n.name, d, root_idx);
+                let key = (n.name.clone(), n.kind.clone());
+                let idx = if let Some(&i) = d.nodes.get(&key) {
+                    i
+                } else {
+                    let i = d.graph.add_node(n.clone());
+                    d.nodes.insert(key, i);
+                    i
+                };
+                if d.graph.find_edge(parent_idx, idx).is_none() {
+                    d.graph.add_edge(parent_idx, idx, ());
+                }
+                idx
+            }
+            _ => {
+                let key = (n.name.clone(), n.kind.clone());
+                if let Some(&i) = d.nodes.get(&key) {
+                    i
+                } else {
+                    let i = d.graph.add_node(n.clone());
+                    d.nodes.insert(key, i);
+                    i
+                }
+            }
+        }
+    };
+
+    for e in edges.lock().unwrap().iter() {
+        let from_idx = ensure_node(&e.from, &mut data);
+        let to_idx = ensure_node(&e.to, &mut data);
+        data.graph.add_edge(from_idx, to_idx, ());
+    }
+
+    let mut res = data.graph;
     if opts.verbose {
         log_verbose(
             opts.color,
