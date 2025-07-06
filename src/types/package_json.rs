@@ -100,10 +100,20 @@ impl Parser for PackageDepsParser {
 
         for (dep, ver) in deps {
             let workspace = ver.starts_with("workspace:");
-            let kind = if workspace { NodeKind::Package } else { NodeKind::External };
+            let kind = if workspace {
+                NodeKind::Package
+            } else {
+                NodeKind::External
+            };
             edges.push(Edge {
-                from: Node { name: name.clone(), kind: NodeKind::Package },
-                to: Node { name: dep.clone(), kind },
+                from: Node {
+                    name: name.clone(),
+                    kind: NodeKind::Package,
+                },
+                to: Node {
+                    name: dep.clone(),
+                    kind,
+                },
             });
         }
         Ok(edges)
@@ -125,7 +135,8 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = crate::build_dependency_graph(&root, None, &logger).unwrap();
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         assert!(graph.node_indices().any(|i| graph[i].name == "pkg"));
     }
 
@@ -134,7 +145,8 @@ mod tests {
         let fs = TestFS::new([("pkg/package.json", "not json")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = crate::build_dependency_graph(&root, None, &logger);
+        let walk = crate::WalkBuilder::new(&root).build();
+        let res = crate::build_dependency_graph(&walk, None, &logger);
         assert!(res.is_ok());
     }
 
@@ -143,7 +155,8 @@ mod tests {
         let fs = TestFS::new([("pkg/package.json", "notjson")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = crate::build_dependency_graph(&root, None, &logger);
+        let walk = crate::WalkBuilder::new(&root).build();
+        let res = crate::build_dependency_graph(&walk, None, &logger);
         assert!(res.is_ok());
     }
 }
