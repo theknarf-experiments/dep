@@ -35,3 +35,4 @@ pub mod index;
 pub mod monorepo;
 pub mod package_json;
 pub mod package_util;
+pub mod vite;
