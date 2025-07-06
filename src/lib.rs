@@ -6,12 +6,13 @@ use std::sync::{Arc, Mutex};
 
 use vfs::VfsPath;
 
+pub mod analysis;
 pub mod output;
-pub use output::{filter_graph, graph_to_dot, graph_to_json};
-pub use analysis::prune_unconnected;
+pub use analysis::{filter_graph, prune_unconnected};
+pub use output::{graph_to_dot, graph_to_json};
 pub mod types;
 use types::package_json::{PackageDepsParser, PackageMainParser};
-mod analysis;
+
 mod logger;
 mod traversal;
 mod tsconfig;
@@ -244,7 +245,11 @@ pub fn build_dependency_graph(
     if opts.verbose {
         log_verbose(
             opts.color,
-            &format!("graph: nodes={}, edges={}", res.node_count(), res.edge_count()),
+            &format!(
+                "graph: nodes={}, edges={}",
+                res.node_count(),
+                res.edge_count()
+            ),
         );
     }
     Ok(res)
