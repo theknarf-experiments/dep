@@ -32,7 +32,7 @@ mod tests {
         let fs = TestFS::new([("index.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
         let json = graph_to_json(&filter_graph(&graph, true, true, false, true, true, &[]));
         assert!(json.contains("index.js"));
         assert!(json.contains("b.js"));

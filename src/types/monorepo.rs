@@ -84,7 +84,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = crate::build_dependency_graph(&root, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)
