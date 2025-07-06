@@ -133,12 +133,12 @@ pub fn build_dependency_graph(
                 parsed_files.push(path_clone.clone());
             }
             s.spawn(move |_| {
-                ctx.logger
-                    .log(LogLevel::Debug, &format!("file: {}", path_clone.as_str()));
                 for p in parsers {
                     if p.can_parse(&path_clone) {
-                        ctx.logger
-                            .log(LogLevel::Debug, &format!("  parser {}", p.name()));
+                        ctx.logger.log(
+                            LogLevel::Debug,
+                            &format!("Used {} parsed: {}", p.name(), path_clone.as_str()),
+                        );
                         match p.parse(&path_clone, ctx) {
                             Ok(mut es) => {
                                 if !es.is_empty() {
