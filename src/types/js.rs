@@ -3,8 +3,8 @@ use std::path::Path;
 use vfs::VfsPath;
 
 use crate::logger::log_error;
-use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::types::{Context, Edge, Parser};
+use crate::{Node, NodeKind};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
 use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConfig};
@@ -185,7 +185,7 @@ impl Parser for JsParser {
         JS_EXTENSIONS.contains(&ext)
     }
 
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<()> {
+    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let root_str = ctx.root.as_str().trim_end_matches('/');
         let rel = path
             .as_str()
@@ -193,25 +193,11 @@ impl Parser for JsParser {
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
         let imports = parse_file(path, ctx.color).unwrap_or_default();
-        let from_idx;
-        {
-            let mut data = ctx.data.lock().unwrap();
-            let parent_idx = ensure_folders(rel, &mut data, ctx.root_idx);
-            let key = (rel.to_string(), NodeKind::File);
-            from_idx = if let Some(&idx) = data.nodes.get(&key) {
-                idx
-            } else {
-                let idx = data.graph.add_node(Node {
-                    name: rel.to_string(),
-                    kind: NodeKind::File,
-                });
-                data.nodes.insert(key, idx);
-                idx
-            };
-            if data.graph.find_edge(parent_idx, from_idx).is_none() {
-                data.graph.add_edge(parent_idx, from_idx, ());
-            }
-        }
+        let mut edges = Vec::new();
+        let from_node = Node {
+            name: rel.to_string(),
+            kind: NodeKind::File,
+        };
         let dir = path.parent();
         for i in imports {
             let (target_str, kind) = if i.starts_with('.') {
@@ -257,21 +243,16 @@ impl Parser for JsParser {
             } else {
                 (i.clone(), NodeKind::External)
             };
-            let mut data = ctx.data.lock().unwrap();
-            let key = (target_str.clone(), kind.clone());
-            let to_idx = if let Some(&idx) = data.nodes.get(&key) {
-                idx
-            } else {
-                let idx = data.graph.add_node(Node {
-                    name: target_str.clone(),
-                    kind: kind.clone(),
-                });
-                data.nodes.insert(key, idx);
-                idx
+            let to_node = Node {
+                name: target_str.clone(),
+                kind: kind.clone(),
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            edges.push(Edge {
+                from: from_node.clone(),
+                to: to_node,
+            });
         }
-        Ok(())
+        Ok(edges)
     }
 }
 

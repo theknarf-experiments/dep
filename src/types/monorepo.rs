@@ -1,7 +1,7 @@
 use vfs::VfsPath;
 
 use crate::types::package_util::{Package, find_packages};
-use crate::types::{Context, Parser};
+use crate::types::{Context, Edge, Parser};
 
 pub struct MonorepoParser;
 
@@ -14,9 +14,9 @@ impl Parser for MonorepoParser {
         name == "pnpm-workspace.yml" || name == "package.json"
     }
 
-    fn parse(&self, path: &VfsPath, _ctx: &Context) -> anyhow::Result<()> {
+    fn parse(&self, path: &VfsPath, _ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let _ = path.read_to_string();
-        Ok(())
+        Ok(Vec::new())
     }
 }
 

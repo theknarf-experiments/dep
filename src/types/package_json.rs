@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use vfs::VfsPath;
 
-use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::types::{Context, Edge, Parser};
+use crate::{Node, NodeKind};
 
 #[derive(Deserialize)]
 struct RawPackage {
@@ -33,28 +33,14 @@ impl Parser for PackageMainParser {
             == Some("package.json")
     }
 
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<()> {
+    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let Some(raw) = read_package(path)? else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let Some(name) = raw.name else {
-            return Ok(());
+            return Ok(Vec::new());
         };
-        let pkg_idx;
-        {
-            let mut data = ctx.data.lock().unwrap();
-            let key = (name.clone(), NodeKind::Package);
-            pkg_idx = if let Some(&i) = data.nodes.get(&key) {
-                i
-            } else {
-                let i = data.graph.add_node(Node {
-                    name: name.clone(),
-                    kind: NodeKind::Package,
-                });
-                data.nodes.insert(key, i);
-                i
-            };
-        }
+        let mut edges = Vec::new();
         if let Some(main) = raw.main {
             if let Ok(main_path) = path.parent().join(&main) {
                 if main_path.exists().unwrap_or(false) {
@@ -65,27 +51,20 @@ impl Parser for PackageMainParser {
                         .unwrap_or(main_path.as_str())
                         .trim_start_matches('/')
                         .to_string();
-                    let mut data = ctx.data.lock().unwrap();
-                    let parent_idx = ensure_folders(&rel, &mut data, ctx.root_idx);
-                    let key = (rel.clone(), NodeKind::File);
-                    let file_idx = if let Some(&i) = data.nodes.get(&key) {
-                        i
-                    } else {
-                        let i = data.graph.add_node(Node {
-                            name: rel.clone(),
+                    edges.push(Edge {
+                        from: Node {
+                            name: name.clone(),
+                            kind: NodeKind::Package,
+                        },
+                        to: Node {
+                            name: rel,
                             kind: NodeKind::File,
-                        });
-                        data.nodes.insert(key, i);
-                        i
-                    };
-                    if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                        data.graph.add_edge(parent_idx, file_idx, ());
-                    }
-                    data.graph.add_edge(pkg_idx, file_idx, ());
+                        },
+                    });
                 }
             }
         }
-        Ok(())
+        Ok(edges)
     }
 }
 
@@ -102,28 +81,14 @@ impl Parser for PackageDepsParser {
             == Some("package.json")
     }
 
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<()> {
+    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let Some(raw) = read_package(path)? else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let Some(name) = raw.name else {
-            return Ok(());
+            return Ok(Vec::new());
         };
-        let pkg_idx;
-        {
-            let mut data = ctx.data.lock().unwrap();
-            let key = (name.clone(), NodeKind::Package);
-            pkg_idx = if let Some(&i) = data.nodes.get(&key) {
-                i
-            } else {
-                let i = data.graph.add_node(Node {
-                    name: name.clone(),
-                    kind: NodeKind::Package,
-                });
-                data.nodes.insert(key, i);
-                i
-            };
-        }
+        let mut edges = Vec::new();
 
         let mut deps = HashMap::new();
         if let Some(map) = raw.dependencies {
@@ -135,37 +100,13 @@ impl Parser for PackageDepsParser {
 
         for (dep, ver) in deps {
             let workspace = ver.starts_with("workspace:");
-            if workspace {
-                let mut data = ctx.data.lock().unwrap();
-                let key = (dep.clone(), NodeKind::Package);
-                let to_idx = if let Some(&i) = data.nodes.get(&key) {
-                    i
-                } else {
-                    let i = data.graph.add_node(Node {
-                        name: dep.clone(),
-                        kind: NodeKind::Package,
-                    });
-                    data.nodes.insert(key, i);
-                    i
-                };
-                data.graph.add_edge(pkg_idx, to_idx, ());
-            } else {
-                let mut data = ctx.data.lock().unwrap();
-                let key = (dep.clone(), NodeKind::External);
-                let to_idx = if let Some(&i) = data.nodes.get(&key) {
-                    i
-                } else {
-                    let i = data.graph.add_node(Node {
-                        name: dep.clone(),
-                        kind: NodeKind::External,
-                    });
-                    data.nodes.insert(key, i);
-                    i
-                };
-                data.graph.add_edge(pkg_idx, to_idx, ());
-            }
+            let kind = if workspace { NodeKind::Package } else { NodeKind::External };
+            edges.push(Edge {
+                from: Node { name: name.clone(), kind: NodeKind::Package },
+                to: Node { name: dep.clone(), kind },
+            });
         }
-        Ok(())
+        Ok(edges)
     }
 }
 

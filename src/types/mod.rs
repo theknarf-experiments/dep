@@ -1,6 +1,5 @@
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use vfs::VfsPath;
 
 use crate::{Node, NodeKind};
@@ -12,17 +11,21 @@ pub struct GraphCtx {
 }
 
 pub struct Context<'a> {
-    pub data: Arc<Mutex<GraphCtx>>,
-    pub root_idx: NodeIndex,
     pub root: &'a VfsPath,
     pub aliases: &'a [(String, VfsPath)],
     pub color: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct Edge {
+    pub from: Node,
+    pub to: Node,
+}
+
 pub trait Parser: Send + Sync {
     fn name(&self) -> &'static str;
     fn can_parse(&self, path: &VfsPath) -> bool;
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<()>;
+    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>>;
 }
 
 pub mod html;

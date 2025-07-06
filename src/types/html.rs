@@ -6,8 +6,8 @@ use crate::logger::log_error;
 use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
-use crate::types::{Context, Parser};
-use crate::{Node, NodeKind, ensure_folders};
+use crate::types::{Context, Edge, Parser};
+use crate::{Node, NodeKind};
 
 pub(crate) const HTML_EXTENSIONS: &[&str] = &["html"];
 
@@ -24,12 +24,12 @@ impl Parser for HtmlParser {
             == Some("html")
     }
 
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<()> {
+    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let src = match path.read_to_string() {
             Ok(s) => s,
             Err(e) => {
                 log_error(ctx.color, &format!("failed to read {}: {e}", path.as_str()));
-                return Ok(());
+                return Ok(Vec::new());
             }
         };
         let root_str = ctx.root.as_str().trim_end_matches('/');
@@ -38,24 +38,11 @@ impl Parser for HtmlParser {
             .strip_prefix(root_str)
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
-        {
-            let mut data = ctx.data.lock().unwrap();
-            let parent_idx = ensure_folders(rel, &mut data, ctx.root_idx);
-            let key = (rel.to_string(), NodeKind::File);
-            let file_idx = if let Some(&i) = data.nodes.get(&key) {
-                i
-            } else {
-                let i = data.graph.add_node(Node {
-                    name: rel.to_string(),
-                    kind: NodeKind::File,
-                });
-                data.nodes.insert(key, i);
-                i
-            };
-            if data.graph.find_edge(parent_idx, file_idx).is_none() {
-                data.graph.add_edge(parent_idx, file_idx, ());
-            }
-        }
+        let mut edges = Vec::new();
+        let from_node = Node {
+            name: rel.to_string(),
+            kind: NodeKind::File,
+        };
         let re = Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).unwrap();
         for cap in re.captures_iter(&src) {
             let spec = cap[1].to_string();
@@ -102,22 +89,16 @@ impl Parser for HtmlParser {
             } else {
                 (spec.clone(), NodeKind::External)
             };
-            let mut data = ctx.data.lock().unwrap();
-            let from_idx = data.nodes[&(rel.to_string(), NodeKind::File)];
-            let key = (target_str.clone(), kind.clone());
-            let to_idx = if let Some(&i) = data.nodes.get(&key) {
-                i
-            } else {
-                let i = data.graph.add_node(Node {
-                    name: target_str.clone(),
-                    kind: kind.clone(),
-                });
-                data.nodes.insert(key, i);
-                i
+            let to_node = Node {
+                name: target_str.clone(),
+                kind: kind.clone(),
             };
-            data.graph.add_edge(from_idx, to_idx, ());
+            edges.push(Edge {
+                from: from_node.clone(),
+                to: to_node,
+            });
         }
-        Ok(())
+        Ok(edges)
     }
 }
 
