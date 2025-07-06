@@ -125,7 +125,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = crate::build_dependency_graph(&root, None, &logger).unwrap();
         assert!(graph.node_indices().any(|i| graph[i].name == "pkg"));
     }
 
@@ -134,7 +134,7 @@ mod tests {
         let fs = TestFS::new([("pkg/package.json", "not json")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = crate::build_dependency_graph(&root, Default::default(), &logger);
+        let res = crate::build_dependency_graph(&root, None, &logger);
         assert!(res.is_ok());
     }
 
@@ -143,7 +143,7 @@ mod tests {
         let fs = TestFS::new([("pkg/package.json", "notjson")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = crate::build_dependency_graph(&root, Default::default(), &logger);
+        let res = crate::build_dependency_graph(&root, None, &logger);
         assert!(res.is_ok());
     }
 }
