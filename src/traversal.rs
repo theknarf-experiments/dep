@@ -2,9 +2,7 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::path::Path;
 use vfs::{VfsFileType, VfsPath};
 
-use crate::types::html::HTML_EXTENSIONS;
-use crate::types::js::JS_EXTENSIONS;
-const SPECIAL_FILES: &[&str] = &["package.json", "pnpm-workspace.yml", "tsconfig.json"];
+use crate::{LogLevel, Logger};
 
 fn load_gitignore(root: &VfsPath) -> anyhow::Result<Option<Gitignore>> {
     if let Ok(path) = root.join(".gitignore") {
@@ -21,8 +19,7 @@ fn load_gitignore(root: &VfsPath) -> anyhow::Result<Option<Gitignore>> {
     Ok(None)
 }
 
-/// Recursively collect JS/TS files starting from `root` respecting `.gitignore`.
-use crate::{LogLevel, Logger};
+/// Recursively collect all files starting from `root` while respecting `.gitignore`.
 
 pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<VfsPath>> {
     let gitignore = match load_gitignore(root) {
@@ -54,12 +51,6 @@ pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<
             .strip_prefix(root_str)
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
-        if rel == "node_modules"
-            || rel.starts_with("node_modules/")
-            || rel.contains("/node_modules/")
-        {
-            continue;
-        }
         let meta = match path.metadata() {
             Ok(m) => m,
             Err(e) => {
@@ -78,20 +69,7 @@ pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<
                 continue;
             }
         }
-        let name = Path::new(path.as_str())
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        let ext = Path::new(path.as_str())
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        if JS_EXTENSIONS.contains(&ext)
-            || HTML_EXTENSIONS.contains(&ext)
-            || SPECIAL_FILES.contains(&name)
-        {
-            files.push(path);
-        }
+        files.push(path);
     }
     Ok(files)
 }
@@ -118,7 +96,10 @@ mod tests {
             .collect();
         assert!(names.contains(&"a.js"));
         assert!(names.contains(&"c.ts"));
+        // .gitignore should not include b.js
         assert!(!names.contains(&"b.js"));
+        // The .gitignore file itself is included since it is not ignored
+        assert!(names.contains(&".gitignore"));
     }
 
     #[test]
@@ -146,8 +127,13 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_node_modules() {
-        let fs = TestFS::new([("src/a.js", ""), ("node_modules/b.js", "")]);
+    fn test_gitignore_node_modules() {
+        let fs = TestFS::new([
+            (".gitignore", "node_modules/\n"),
+            ("src/a.js", ""),
+            ("node_modules/b.js", ""),
+            ("node_modules/sub/c.js", ""),
+        ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
         let files = collect_files(&root, &logger).unwrap();
@@ -156,6 +142,8 @@ mod tests {
             .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
             .collect();
         assert!(names.contains(&"a.js"));
+        assert!(names.contains(&".gitignore"));
         assert!(!names.contains(&"b.js"));
+        assert!(!names.contains(&"c.js"));
     }
 }

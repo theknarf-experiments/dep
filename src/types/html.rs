@@ -9,8 +9,6 @@ use crate::types::js::{
 use crate::types::{Context, Edge, Parser};
 use crate::{Node, NodeKind};
 
-pub(crate) const HTML_EXTENSIONS: &[&str] = &["html"];
-
 pub struct HtmlParser;
 
 impl Parser for HtmlParser {
