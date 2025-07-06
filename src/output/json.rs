@@ -2,20 +2,32 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 use serde::Serialize;
 
-use crate::Node;
+use crate::{Node, EdgeType};
+
+#[derive(Serialize)]
+struct JsonEdge {
+    from: usize,
+    to: usize,
+    #[serde(rename = "type")]
+    kind: EdgeType,
+}
 
 #[derive(Serialize)]
 struct JsonGraph {
     nodes: Vec<Node>,
-    edges: Vec<(usize, usize)>,
+    edges: Vec<JsonEdge>,
 }
 
 /// Convert a dependency graph to JSON format.
-pub fn graph_to_json(graph: &DiGraph<Node, ()>) -> String {
+pub fn graph_to_json(graph: &DiGraph<Node, EdgeType>) -> String {
     let nodes: Vec<Node> = graph.node_indices().map(|i| graph[i].clone()).collect();
-    let edges: Vec<(usize, usize)> = graph
+    let edges: Vec<JsonEdge> = graph
         .edge_references()
-        .map(|e| (e.source().index(), e.target().index()))
+        .map(|e| JsonEdge {
+            from: e.source().index(),
+            to: e.target().index(),
+            kind: e.weight().clone(),
+        })
         .collect();
     serde_json::to_string_pretty(&JsonGraph { nodes, edges }).unwrap()
 }

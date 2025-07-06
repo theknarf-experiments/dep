@@ -4,7 +4,7 @@ use std::path::Path;
 use vfs::VfsPath;
 
 use crate::types::{Context, Edge, Parser};
-use crate::{Node, NodeKind};
+use crate::{Node, NodeKind, EdgeType};
 
 #[derive(Deserialize)]
 struct RawPackage {
@@ -60,6 +60,7 @@ impl Parser for PackageMainParser {
                             name: rel,
                             kind: NodeKind::File,
                         },
+                        kind: EdgeType::Regular,
                     });
                 }
             }
@@ -114,6 +115,7 @@ impl Parser for PackageDepsParser {
                     name: dep.clone(),
                     kind,
                 },
+                kind: EdgeType::Regular,
             });
         }
         Ok(edges)

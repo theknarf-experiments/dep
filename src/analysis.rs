@@ -1,9 +1,9 @@
-use crate::{Node, NodeKind};
+use crate::{Node, NodeKind, EdgeType};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use std::collections::HashMap;
 
-pub fn prune_unconnected(graph: &mut DiGraph<Node, ()>) {
+pub fn prune_unconnected(graph: &mut DiGraph<Node, EdgeType>) {
     loop {
         let mut removed = false;
         let nodes: Vec<NodeIndex> = graph.node_indices().collect();
@@ -26,15 +26,15 @@ pub fn prune_unconnected(graph: &mut DiGraph<Node, ()>) {
 
 /// Filter a dependency graph according to output options.
 pub fn filter_graph(
-    graph: &DiGraph<Node, ()>,
+    graph: &DiGraph<Node, EdgeType>,
     include_external: bool,
     include_builtin: bool,
     include_folders: bool,
     include_assets: bool,
     include_packages: bool,
     ignore_nodes: &[String],
-) -> DiGraph<Node, ()> {
-    let mut filtered = DiGraph::new();
+) -> DiGraph<Node, EdgeType> {
+    let mut filtered: DiGraph<Node, EdgeType> = DiGraph::new();
     let mut map = HashMap::new();
     use std::collections::HashSet;
     let ignore: HashSet<&str> = ignore_nodes.iter().map(|s| s.as_str()).collect();
@@ -58,7 +58,7 @@ pub fn filter_graph(
     }
     for edge in graph.edge_references() {
         if let (Some(&s), Some(&t)) = (map.get(&edge.source()), map.get(&edge.target())) {
-            filtered.add_edge(s, t, ());
+            filtered.add_edge(s, t, edge.weight().clone());
         }
     }
     filtered
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_prune_unconnected() {
-        let mut g: DiGraph<Node, ()> = DiGraph::new();
+        let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
         let a = g.add_node(Node {
             name: "a".into(),
             kind: NodeKind::File,
@@ -83,7 +83,7 @@ mod tests {
             name: "b".into(),
             kind: NodeKind::File,
         });
-        g.add_edge(a, b, ());
+        g.add_edge(a, b, EdgeType::Regular);
         let _c = g.add_node(Node {
             name: "c".into(),
             kind: NodeKind::File,
@@ -185,18 +185,18 @@ mod tests {
             include_assets in any::<bool>(),
             include_packages in any::<bool>(),
         ) {
-            let mut g = DiGraph::new();
+            let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
             let file = g.add_node(Node { name: "file.js".into(), kind: NodeKind::File });
             let ext = g.add_node(Node { name: "ext".into(), kind: NodeKind::External });
             let builtin = g.add_node(Node { name: "builtin".into(), kind: NodeKind::Builtin });
             let folder = g.add_node(Node { name: "folder".into(), kind: NodeKind::Folder });
             let asset = g.add_node(Node { name: "asset.css".into(), kind: NodeKind::Asset });
             let pkg = g.add_node(Node { name: "pkg".into(), kind: NodeKind::Package });
-            g.add_edge(file, ext, ());
-            g.add_edge(file, builtin, ());
-            g.add_edge(file, folder, ());
-            g.add_edge(file, asset, ());
-            g.add_edge(file, pkg, ());
+            g.add_edge(file, ext, EdgeType::Regular);
+            g.add_edge(file, builtin, EdgeType::Regular);
+            g.add_edge(file, folder, EdgeType::Regular);
+            g.add_edge(file, asset, EdgeType::Regular);
+            g.add_edge(file, pkg, EdgeType::Regular);
 
             let filtered = filter_graph(
                 &g,

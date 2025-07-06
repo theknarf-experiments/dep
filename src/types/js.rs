@@ -4,7 +4,7 @@ use vfs::VfsPath;
 
 use crate::types::{Context, Edge, Parser};
 use crate::{LogLevel, Logger};
-use crate::{Node, NodeKind};
+use crate::{Node, NodeKind, EdgeType};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
 use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConfig};
@@ -253,6 +253,7 @@ impl Parser for JsParser {
             edges.push(Edge {
                 from: from_node.clone(),
                 to: to_node,
+                kind: EdgeType::Regular,
             });
         }
         Ok(edges)
