@@ -86,15 +86,24 @@ fn default_color() -> bool {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let root: VfsPath = PhysicalFS::new(&args.path).into();
-    let graph = dep::build_dependency_graph(
+    let mut graph = dep::build_dependency_graph(
         &root,
         dep::BuildOptions {
             workers: args.workers,
             verbose: args.verbose,
-            prune: args.prune,
             color: args.color,
         },
     )?;
+    if args.prune {
+        let before = graph.node_count();
+        dep::prune_unconnected(&mut graph);
+        if args.verbose {
+            dep::log_verbose(
+                args.color,
+                &format!("pruned {} nodes", before - graph.node_count()),
+            );
+        }
+    }
     let filtered = dep::filter_graph(
         &graph,
         args.include_external,
