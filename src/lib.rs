@@ -16,7 +16,7 @@ use types::package_json::{PackageDepsParser, PackageMainParser};
 mod logger;
 mod traversal;
 mod tsconfig;
-pub use logger::{log_error, log_verbose};
+pub use logger::{ConsoleLogger, EmptyLogger, LogLevel, Logger};
 use tsconfig::load_tsconfig_aliases;
 #[cfg(test)]
 pub(crate) mod test_util;
@@ -106,16 +106,17 @@ pub(crate) fn ensure_folders(
 pub fn build_dependency_graph(
     root: &VfsPath,
     opts: BuildOptions,
+    logger: &dyn Logger,
 ) -> anyhow::Result<DiGraph<Node, ()>> {
-    let files = traversal::collect_files(root, opts.color)?;
+    let files = traversal::collect_files(root, logger)?;
     if opts.verbose {
-        log_verbose(opts.color, &format!("found {} files", files.len()));
+        logger.log(LogLevel::Debug, &format!("found {} files", files.len()));
     }
-    let aliases = load_tsconfig_aliases(root, opts.color)?;
+    let aliases = load_tsconfig_aliases(root, logger)?;
     let ctx = types::Context {
         root,
         aliases: &aliases,
-        color: opts.color,
+        logger,
     };
     let parsers: Vec<Box<dyn types::Parser>> = vec![
         Box::new(PackageMainParser),
@@ -125,7 +126,7 @@ pub fn build_dependency_graph(
     ];
     let workers = opts.workers.unwrap_or_else(|| num_cpus::get());
     if opts.verbose {
-        log_verbose(opts.color, &format!("using {} worker threads", workers));
+        logger.log(LogLevel::Debug, &format!("using {} worker threads", workers));
     }
     let edges: Arc<Mutex<Vec<types::Edge>>> = Arc::new(Mutex::new(Vec::new()));
     let pool = rayon::ThreadPoolBuilder::new()
@@ -145,12 +146,12 @@ pub fn build_dependency_graph(
             }
             s.spawn(move |_| {
                 if verbose {
-                    log_verbose(ctx.color, &format!("file: {}", path_clone.as_str()));
+                    ctx.logger.log(LogLevel::Debug, &format!("file: {}", path_clone.as_str()));
                 }
                 for p in parsers {
                     if p.can_parse(&path_clone) {
                         if verbose {
-                            log_verbose(ctx.color, &format!("  parser {}", p.name()));
+                            ctx.logger.log(LogLevel::Debug, &format!("  parser {}", p.name()));
                         }
                         match p.parse(&path_clone, ctx) {
                             Ok(mut es) => {
@@ -243,13 +244,9 @@ pub fn build_dependency_graph(
 
     let res = data.graph;
     if opts.verbose {
-        log_verbose(
-            opts.color,
-            &format!(
-                "graph: nodes={}, edges={}",
-                res.node_count(),
-                res.edge_count()
-            ),
+        logger.log(
+            LogLevel::Debug,
+            &format!("graph: nodes={}, edges={}", res.node_count(), res.edge_count()),
         );
     }
     Ok(res)
@@ -267,7 +264,8 @@ mod tests {
         let fs = TestFS::new([("a.js", "import './b';"), ("b.js", "")]);
         let root = fs.root();
 
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a.js" && graph[*i].kind == NodeKind::File)
@@ -290,7 +288,8 @@ mod tests {
             ];
             let fs = TestFS::new(entries.iter().map(|(p,c)| (p.as_str(), c.as_slice())));
             let path = fs.root().join("proj").unwrap();
-            let graph = build_dependency_graph(&path, Default::default()).unwrap();
+            let logger = EmptyLogger;
+            let graph = build_dependency_graph(&path, Default::default(), &logger).unwrap();
 
             let main_rel = format!("src/main.{ext_a}");
             let util_rel = format!("lib/util.{ext_b}");

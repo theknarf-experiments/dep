@@ -2,7 +2,7 @@ use regex::Regex;
 use std::path::Path;
 use vfs::VfsPath;
 
-use crate::logger::log_error;
+use crate::LogLevel;
 use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
@@ -28,7 +28,7 @@ impl Parser for HtmlParser {
         let src = match path.read_to_string() {
             Ok(s) => s,
             Err(e) => {
-                log_error(ctx.color, &format!("failed to read {}: {e}", path.as_str()));
+                ctx.logger.log(LogLevel::Error, &format!("failed to read {}: {e}", path.as_str()));
                 return Ok(Vec::new());
             }
         };
@@ -115,7 +115,8 @@ mod tests {
             ("app.js", ""),
         ]);
         let root = fs.root();
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let html_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.html" && graph[*i].kind == NodeKind::File)
@@ -134,7 +135,8 @@ mod tests {
             ("broken.js", ""),
         ]);
         let root = fs.root();
-        let res = build_dependency_graph(&root, Default::default());
+        let logger = crate::EmptyLogger;
+        let res = build_dependency_graph(&root, Default::default(), &logger);
         assert!(res.is_ok());
     }
 }

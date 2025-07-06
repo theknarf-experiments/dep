@@ -99,7 +99,8 @@ mod tests {
         let fs = TestFS::new([("foo/bar.js", "")]);
         let root = fs.root();
 
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let folder_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "foo" && graph[*i].kind == NodeKind::Folder)
@@ -123,7 +124,8 @@ mod tests {
         let fs = TestFS::new([("index.js", "import './style.css';"), ("style.css", "")]);
         let root = fs.root();
 
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let js_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
@@ -144,7 +146,8 @@ mod tests {
     fn test_json_output() {
         let fs = TestFS::new([("index.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let json = graph_to_json(&filter_graph(&graph, true, true, false, true, true, &[]));
         assert!(json.contains("index.js"));
         assert!(json.contains("b.js"));
@@ -154,7 +157,8 @@ mod tests {
     fn test_ignore_nodes() {
         let fs = TestFS::new([("a.js", ""), ("b.js", "")]);
         let root = fs.root();
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let dot = graph_to_dot(&filter_graph(
             &graph,
             true,

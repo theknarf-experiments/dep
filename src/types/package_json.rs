@@ -124,7 +124,8 @@ mod tests {
             ("pkg/index.js", b"" as &[u8]),
         ]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         assert!(graph.node_indices().any(|i| graph[i].name == "pkg"));
     }
 
@@ -132,7 +133,8 @@ mod tests {
     fn test_package_parsers_malformed() {
         let fs = TestFS::new([("pkg/package.json", "not json")]);
         let root = fs.root();
-        let res = crate::build_dependency_graph(&root, Default::default());
+        let logger = crate::EmptyLogger;
+        let res = crate::build_dependency_graph(&root, Default::default(), &logger);
         assert!(res.is_ok());
     }
 
@@ -140,7 +142,8 @@ mod tests {
     fn test_malformed_package_json_is_ignored() {
         let fs = TestFS::new([("pkg/package.json", "notjson")]);
         let root = fs.root();
-        let res = crate::build_dependency_graph(&root, Default::default());
+        let logger = crate::EmptyLogger;
+        let res = crate::build_dependency_graph(&root, Default::default(), &logger);
         assert!(res.is_ok());
     }
 }

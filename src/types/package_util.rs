@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use vfs::{VfsFileType, VfsPath};
 
+use crate::{LogLevel, Logger};
+
 #[derive(Debug)]
 pub struct Package {
     pub name: String,
@@ -54,12 +56,12 @@ fn parse_package_file(path: &VfsPath) -> anyhow::Result<Option<Package>> {
 }
 
 /// Find all packages under `root` by looking for package.json files.
-pub fn find_packages(root: &VfsPath, color: bool) -> anyhow::Result<Vec<Package>> {
+pub fn find_packages(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<Package>> {
     let mut list = Vec::new();
     let walk = match root.walk_dir() {
         Ok(w) => w,
         Err(e) => {
-            crate::log_error(color, &format!("failed to walk {}: {e}", root.as_str()));
+            logger.log(LogLevel::Error, &format!("failed to walk {}: {e}", root.as_str()));
             return Ok(list);
         }
     };
@@ -67,14 +69,14 @@ pub fn find_packages(root: &VfsPath, color: bool) -> anyhow::Result<Vec<Package>
         let path = match entry {
             Ok(p) => p,
             Err(e) => {
-                crate::log_error(color, &format!("walk error: {e}"));
+                logger.log(LogLevel::Error, &format!("walk error: {e}"));
                 continue;
             }
         };
         let meta = match path.metadata() {
             Ok(m) => m,
             Err(e) => {
-                crate::log_error(color, &format!("metadata error on {}: {e}", path.as_str()));
+                logger.log(LogLevel::Error, &format!("metadata error on {}: {e}", path.as_str()));
                 continue;
             }
         };
@@ -112,7 +114,8 @@ mod tests {
             ),
         ]);
         let root = fs.root();
-        let p = find_packages(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let p = find_packages(&root, &logger).unwrap();
         assert_eq!(p.len(), 1);
         let p0 = &p[0];
         assert_eq!(p0.name, "pkg");
@@ -125,7 +128,8 @@ mod tests {
     fn test_malformed_package_json() {
         let fs = TestFS::new([("pkg/package.json", "not json")]);
         let root = fs.root();
-        let res = find_packages(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let res = find_packages(&root, &logger).unwrap();
         assert!(res.is_empty());
     }
 }

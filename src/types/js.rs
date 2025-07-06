@@ -2,7 +2,7 @@ use regex::Regex;
 use std::path::Path;
 use vfs::VfsPath;
 
-use crate::logger::log_error;
+use crate::{LogLevel, Logger};
 use crate::types::{Context, Edge, Parser};
 use crate::{Node, NodeKind};
 use swc_common::{FileName, SourceMap, sync::Lrc};
@@ -65,11 +65,11 @@ pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Resu
 }
 
 /// Parse a JS/TS file and return the list of relative imports.
-pub(crate) fn parse_file(path: &VfsPath, color: bool) -> anyhow::Result<Vec<String>> {
+pub(crate) fn parse_file(path: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<String>> {
     let src = match path.read_to_string() {
         Ok(s) => s,
         Err(e) => {
-            log_error(color, &format!("failed to read {}: {e}", path.as_str()));
+            logger.log(LogLevel::Error, &format!("failed to read {}: {e}", path.as_str()));
             return Ok(Vec::new());
         }
     };
@@ -192,7 +192,7 @@ impl Parser for JsParser {
             .strip_prefix(root_str)
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
-        let imports = parse_file(path, ctx.color).unwrap_or_default();
+        let imports = parse_file(path, ctx.logger).unwrap_or_default();
         let mut edges = Vec::new();
         let from_node = Node {
             name: rel.to_string(),
@@ -267,7 +267,8 @@ mod tests {
     fn test_js_parser_basic() {
         let fs = TestFS::new([("a.js", "import './b.js';"), ("b.js", "")]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         assert!(graph.node_indices().any(|i| graph[i].name == "a.js"));
     }
 
@@ -275,7 +276,8 @@ mod tests {
     fn test_js_parser_malformed() {
         let fs = TestFS::new([("a.js", "import ???")]);
         let root = fs.root();
-        let res = crate::build_dependency_graph(&root, Default::default());
+        let logger = crate::EmptyLogger;
+        let res = crate::build_dependency_graph(&root, Default::default(), &logger);
         assert!(res.is_ok());
     }
 
@@ -284,7 +286,8 @@ mod tests {
         let fs = TestFS::new([("a.js", "")]);
         let root = fs.root();
         let missing = root.join("missing.js").unwrap();
-        let imports = parse_file(&missing, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let imports = parse_file(&missing, &logger).unwrap();
         assert!(imports.is_empty());
     }
 
@@ -311,7 +314,8 @@ mod tests {
             ("c.js", ""),
         ]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == NodeKind::File)
@@ -332,7 +336,8 @@ mod tests {
     fn test_asset_node_kind() {
         let fs = TestFS::new([("index.js", "import './logo.svg';"), ("logo.svg", "")]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let js_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
@@ -355,7 +360,8 @@ mod tests {
             ("bar.js", ""),
         ]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let main_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
@@ -376,7 +382,8 @@ mod tests {
     fn test_other_extensions() {
         let fs = TestFS::new([("a.mjs", "import './b.cjs';"), ("b.cjs", "")]);
         let root = fs.root();
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a.mjs" && graph[*i].kind == NodeKind::File)

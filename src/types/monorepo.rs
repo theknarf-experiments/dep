@@ -1,7 +1,8 @@
 use vfs::VfsPath;
 
-use crate::types::package_util::{Package, find_packages};
+use crate::types::package_util::{find_packages, Package};
 use crate::types::{Context, Edge, Parser};
+use crate::Logger;
 
 pub struct MonorepoParser;
 
@@ -23,12 +24,12 @@ impl Parser for MonorepoParser {
 /// Load monorepo package information. Currently this simply finds all packages
 /// in the tree via `find_packages` but also parses workspace files to satisfy
 /// the API requirement.
-pub fn load_monorepo_packages(root: &VfsPath, color: bool) -> anyhow::Result<Vec<Package>> {
+pub fn load_monorepo_packages(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<Package>> {
     // Attempt to parse pnpm-workspace.yml and package.json workspaces but the
     // returned packages are still discovered via `find_packages` so malformed
     // files do not cause a failure.
     let _ = parse_workspace_files(root);
-    find_packages(root, color)
+    find_packages(root, logger)
 }
 
 fn parse_workspace_files(root: &VfsPath) -> anyhow::Result<()> {
@@ -63,7 +64,8 @@ mod tests {
             ("packages/b/package.json", b"{\"name\":\"b\"}" as &[u8]),
         ]);
         let root = fs.root();
-        let pkgs = load_monorepo_packages(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let pkgs = load_monorepo_packages(&root, &logger).unwrap();
         assert_eq!(pkgs.len(), 2);
         let names: Vec<_> = pkgs.iter().map(|p| p.name.as_str()).collect();
         assert!(names.contains(&"a"));
@@ -81,8 +83,8 @@ mod tests {
             ("packages/b/package.json", b"{\"name\":\"b\"}" as &[u8]),
         ]);
         let root = fs.root();
-
-        let graph = crate::build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = crate::build_dependency_graph(&root, Default::default(), &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)
