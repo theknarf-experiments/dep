@@ -81,7 +81,7 @@ impl Parser for PackageDepsParser {
             == Some("package.json")
     }
 
-    fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
+    fn parse(&self, path: &VfsPath, _ctx: &Context) -> anyhow::Result<Vec<Edge>> {
         let Some(raw) = read_package(path)? else {
             return Ok(Vec::new());
         };

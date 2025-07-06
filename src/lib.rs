@@ -8,6 +8,7 @@ use vfs::VfsPath;
 
 pub mod output;
 pub use output::{filter_graph, graph_to_dot, graph_to_json};
+pub use analysis::prune_unconnected;
 pub mod types;
 use types::package_json::{PackageDepsParser, PackageMainParser};
 mod analysis;
@@ -53,7 +54,6 @@ pub struct Node {
 pub struct BuildOptions {
     pub workers: Option<usize>,
     pub verbose: bool,
-    pub prune: bool,
     pub color: bool,
 }
 
@@ -62,7 +62,6 @@ impl Default for BuildOptions {
         Self {
             workers: None,
             verbose: false,
-            prune: false,
             color: true,
         }
     }
@@ -241,26 +240,12 @@ pub fn build_dependency_graph(
         data.graph.add_edge(from_idx, to_idx, ());
     }
 
-    let mut res = data.graph;
+    let res = data.graph;
     if opts.verbose {
         log_verbose(
             opts.color,
-            &format!(
-                "graph before prune: nodes={}, edges={}",
-                res.node_count(),
-                res.edge_count()
-            ),
+            &format!("graph: nodes={}, edges={}", res.node_count(), res.edge_count()),
         );
-    }
-    if opts.prune {
-        let before = res.node_count();
-        analysis::prune_unconnected(&mut res);
-        if opts.verbose {
-            log_verbose(
-                opts.color,
-                &format!("pruned {} nodes", before - res.node_count()),
-            );
-        }
     }
     Ok(res)
 }
