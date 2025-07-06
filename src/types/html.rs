@@ -116,7 +116,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
         let html_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "index.html" && graph[*i].kind == NodeKind::File)
@@ -136,7 +136,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = build_dependency_graph(&root, Default::default(), &logger);
+        let res = build_dependency_graph(&root, None, &logger);
         assert!(res.is_ok());
     }
 }

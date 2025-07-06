@@ -51,23 +51,6 @@ pub struct Node {
     pub kind: NodeKind,
 }
 
-#[derive(Clone, Copy)]
-pub struct BuildOptions {
-    pub workers: Option<usize>,
-    pub verbose: bool,
-    pub color: bool,
-}
-
-impl Default for BuildOptions {
-    fn default() -> Self {
-        Self {
-            workers: None,
-            verbose: false,
-            color: true,
-        }
-    }
-}
-
 pub(crate) fn ensure_folders(
     rel: &str,
     data: &mut types::GraphCtx,
@@ -105,13 +88,11 @@ pub(crate) fn ensure_folders(
 /// Build a dependency graph of all JS/TS files within `root`.
 pub fn build_dependency_graph(
     root: &VfsPath,
-    opts: BuildOptions,
+    workers: Option<usize>,
     logger: &dyn Logger,
 ) -> anyhow::Result<DiGraph<Node, ()>> {
     let files = traversal::collect_files(root, logger)?;
-    if opts.verbose {
-        logger.log(LogLevel::Debug, &format!("found {} files", files.len()));
-    }
+    logger.log(LogLevel::Debug, &format!("found {} files", files.len()));
     let aliases = load_tsconfig_aliases(root, logger)?;
     let ctx = types::Context {
         root,
@@ -124,10 +105,11 @@ pub fn build_dependency_graph(
         Box::new(types::js::JsParser),
         Box::new(types::html::HtmlParser),
     ];
-    let workers = opts.workers.unwrap_or_else(|| num_cpus::get());
-    if opts.verbose {
-        logger.log(LogLevel::Debug, &format!("using {} worker threads", workers));
-    }
+    let workers = workers.unwrap_or_else(|| num_cpus::get());
+    logger.log(
+        LogLevel::Debug,
+        &format!("using {} worker threads", workers),
+    );
     let edges: Arc<Mutex<Vec<types::Edge>>> = Arc::new(Mutex::new(Vec::new()));
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(workers)
@@ -137,7 +119,6 @@ pub fn build_dependency_graph(
         for path in &files {
             let parsers = &parsers;
             let ctx = &ctx;
-            let verbose = opts.verbose;
             let edges = edges.clone();
             let path_clone = path.clone();
             let should_parse = parsers.iter().any(|p| p.can_parse(&path_clone));
@@ -145,14 +126,12 @@ pub fn build_dependency_graph(
                 parsed_files.push(path_clone.clone());
             }
             s.spawn(move |_| {
-                if verbose {
-                    ctx.logger.log(LogLevel::Debug, &format!("file: {}", path_clone.as_str()));
-                }
+                ctx.logger
+                    .log(LogLevel::Debug, &format!("file: {}", path_clone.as_str()));
                 for p in parsers {
                     if p.can_parse(&path_clone) {
-                        if verbose {
-                            ctx.logger.log(LogLevel::Debug, &format!("  parser {}", p.name()));
-                        }
+                        ctx.logger
+                            .log(LogLevel::Debug, &format!("  parser {}", p.name()));
                         match p.parse(&path_clone, ctx) {
                             Ok(mut es) => {
                                 if !es.is_empty() {
@@ -243,12 +222,14 @@ pub fn build_dependency_graph(
     }
 
     let res = data.graph;
-    if opts.verbose {
-        logger.log(
-            LogLevel::Debug,
-            &format!("graph: nodes={}, edges={}", res.node_count(), res.edge_count()),
-        );
-    }
+    logger.log(
+        LogLevel::Debug,
+        &format!(
+            "graph: nodes={}, edges={}",
+            res.node_count(),
+            res.edge_count()
+        ),
+    );
     Ok(res)
 }
 
@@ -265,7 +246,7 @@ mod tests {
         let root = fs.root();
 
         let logger = EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
             .find(|i| graph[*i].name == "a.js" && graph[*i].kind == NodeKind::File)
@@ -289,7 +270,7 @@ mod tests {
             let fs = TestFS::new(entries.iter().map(|(p,c)| (p.as_str(), c.as_slice())));
             let path = fs.root().join("proj").unwrap();
             let logger = EmptyLogger;
-            let graph = build_dependency_graph(&path, Default::default(), &logger).unwrap();
+            let graph = build_dependency_graph(&path, None, &logger).unwrap();
 
             let main_rel = format!("src/main.{ext_a}");
             let util_rel = format!("lib/util.{ext_b}");

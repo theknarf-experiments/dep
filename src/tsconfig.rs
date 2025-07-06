@@ -88,7 +88,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -113,7 +113,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -139,7 +139,7 @@ mod tests {
         ]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
+        let graph = build_dependency_graph(&root, None, &logger).unwrap();
 
         let idx_a = graph
             .node_indices()
@@ -169,7 +169,7 @@ mod tests {
         let fs = TestFS::new([("tsconfig.json", "not json"), ("index.ts", "")]);
         let root = fs.root();
         let logger = crate::EmptyLogger;
-        let res = build_dependency_graph(&root, Default::default(), &logger);
+        let res = build_dependency_graph(&root, None, &logger);
         assert!(res.is_ok());
     }
 }
