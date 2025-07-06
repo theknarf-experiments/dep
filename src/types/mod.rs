@@ -2,7 +2,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
 use vfs::VfsPath;
 
-use crate::{Node, NodeKind};
+use crate::{Logger, Node, NodeKind};
 
 #[derive(Debug)]
 pub struct GraphCtx {
@@ -13,7 +13,7 @@ pub struct GraphCtx {
 pub struct Context<'a> {
     pub root: &'a VfsPath,
     pub aliases: &'a [(String, VfsPath)],
-    pub color: bool,
+    pub logger: &'a dyn Logger,
 }
 
 #[derive(Clone, Debug)]

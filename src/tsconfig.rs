@@ -17,16 +17,18 @@ struct CompilerOptions {
     paths: Option<HashMap<String, Vec<String>>>,
 }
 
+use crate::{LogLevel, Logger};
+
 pub fn load_tsconfig_aliases(
     root: &VfsPath,
-    color: bool,
+    logger: &dyn Logger,
 ) -> anyhow::Result<Vec<(String, VfsPath)>> {
     if let Ok(path) = root.join("tsconfig.json") {
         if path.exists()? {
             let contents = match path.read_to_string() {
                 Ok(c) => c,
                 Err(e) => {
-                    crate::log_error(color, &format!("failed to read {}: {e}", path.as_str()));
+                    logger.log(LogLevel::Error, &format!("failed to read {}: {e}", path.as_str()));
                     return Ok(Vec::new());
                 }
             };
@@ -35,7 +37,7 @@ pub fn load_tsconfig_aliases(
                     Ok(Some(value)) => match serde_json::from_value(value) {
                         Ok(v) => v,
                         Err(e) => {
-                            crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
+                            logger.log(LogLevel::Error, &format!("failed to parse tsconfig.json: {e}"));
                             return Ok(Vec::new());
                         }
                     },
@@ -43,7 +45,7 @@ pub fn load_tsconfig_aliases(
                         compiler_options: None,
                     },
                     Err(e) => {
-                        crate::log_error(color, &format!("failed to parse tsconfig.json: {e}"));
+                        logger.log(LogLevel::Error, &format!("failed to parse tsconfig.json: {e}"));
                         return Ok(Vec::new());
                     }
                 };
@@ -85,8 +87,8 @@ mod tests {
             ("foo/bar.ts", b"" as &[u8]),
         ]);
         let root = fs.root();
-
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -110,8 +112,8 @@ mod tests {
             ("foo/bar.ts", b"" as &[u8]),
         ]);
         let root = fs.root();
-
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
 
         let idx_index = graph
             .node_indices()
@@ -136,8 +138,8 @@ mod tests {
             ("lib/c.ts", b"" as &[u8]),
         ]);
         let root = fs.root();
-
-        let graph = build_dependency_graph(&root, Default::default()).unwrap();
+        let logger = crate::EmptyLogger;
+        let graph = build_dependency_graph(&root, Default::default(), &logger).unwrap();
 
         let idx_a = graph
             .node_indices()
@@ -166,7 +168,8 @@ mod tests {
     fn test_malformed_tsconfig_does_not_fail() {
         let fs = TestFS::new([("tsconfig.json", "not json"), ("index.ts", "")]);
         let root = fs.root();
-        let res = build_dependency_graph(&root, Default::default());
+        let logger = crate::EmptyLogger;
+        let res = build_dependency_graph(&root, Default::default(), &logger);
         assert!(res.is_ok());
     }
 }

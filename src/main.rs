@@ -1,5 +1,6 @@
 use clap::Parser;
 use dep::output::OutputType;
+use dep::{LogLevel, Logger};
 use std::path::PathBuf;
 use vfs::{PhysicalFS, VfsPath};
 
@@ -72,6 +73,7 @@ fn default_color() -> bool {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let root: VfsPath = PhysicalFS::new(&args.path).into();
+    let logger = dep::ConsoleLogger { color: args.color, verbose: args.verbose };
     let mut graph = dep::build_dependency_graph(
         &root,
         dep::BuildOptions {
@@ -79,15 +81,13 @@ fn main() -> anyhow::Result<()> {
             verbose: args.verbose,
             color: args.color,
         },
+        &logger,
     )?;
     if args.prune {
         let before = graph.node_count();
         dep::prune_unconnected(&mut graph);
         if args.verbose {
-            dep::log_verbose(
-                args.color,
-                &format!("pruned {} nodes", before - graph.node_count()),
-            );
+            logger.log(LogLevel::Debug, &format!("pruned {} nodes", before - graph.node_count()));
         }
     }
     let filtered = dep::filter_graph(

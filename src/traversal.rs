@@ -22,11 +22,13 @@ fn load_gitignore(root: &VfsPath) -> anyhow::Result<Option<Gitignore>> {
 }
 
 /// Recursively collect JS/TS files starting from `root` respecting `.gitignore`.
-pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>> {
+use crate::{LogLevel, Logger};
+
+pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<VfsPath>> {
     let gitignore = match load_gitignore(root) {
         Ok(v) => v,
         Err(e) => {
-            crate::log_error(color, &format!("failed to read .gitignore: {e}"));
+            logger.log(LogLevel::Error, &format!("failed to read .gitignore: {e}"));
             None
         }
     };
@@ -35,7 +37,7 @@ pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>
     let walk = match root.walk_dir() {
         Ok(w) => w,
         Err(e) => {
-            crate::log_error(color, &format!("failed to walk {}: {e}", root.as_str()));
+            logger.log(LogLevel::Error, &format!("failed to walk {}: {e}", root.as_str()));
             return Ok(files);
         }
     };
@@ -43,7 +45,7 @@ pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>
         let path = match entry {
             Ok(p) => p,
             Err(e) => {
-                crate::log_error(color, &format!("walk error: {e}"));
+                logger.log(LogLevel::Error, &format!("walk error: {e}"));
                 continue;
             }
         };
@@ -61,7 +63,7 @@ pub fn collect_files(root: &VfsPath, color: bool) -> anyhow::Result<Vec<VfsPath>
         let meta = match path.metadata() {
             Ok(m) => m,
             Err(e) => {
-                crate::log_error(color, &format!("metadata error on {}: {e}", path.as_str()));
+                logger.log(LogLevel::Error, &format!("metadata error on {}: {e}", path.as_str()));
                 continue;
             }
         };
@@ -108,7 +110,8 @@ mod tests {
             ("sub/c.ts", ""),
         ]);
         let root = fs.root();
-        let files = collect_files(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let files = collect_files(&root, &logger).unwrap();
         let names: Vec<_> = files
             .iter()
             .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
@@ -123,7 +126,8 @@ mod tests {
         let fs = TestFS::new([] as [(&str, &str); 0]);
         let root = fs.root();
         let missing = root.join("missing").unwrap();
-        let files = collect_files(&missing, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let files = collect_files(&missing, &logger).unwrap();
         assert!(files.is_empty());
     }
 
@@ -136,7 +140,8 @@ mod tests {
             ("ignored.js", ""),
         ]);
         let root = fs.root();
-        let files = collect_files(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let files = collect_files(&root, &logger).unwrap();
         assert!(files.iter().all(|p| !p.as_str().ends_with("ignored.js")));
     }
 
@@ -144,7 +149,8 @@ mod tests {
     fn test_skip_node_modules() {
         let fs = TestFS::new([("src/a.js", ""), ("node_modules/b.js", "")]);
         let root = fs.root();
-        let files = collect_files(&root, false).unwrap();
+        let logger = crate::EmptyLogger;
+        let files = collect_files(&root, &logger).unwrap();
         let names: Vec<_> = files
             .iter()
             .map(|p| Path::new(p.as_str()).file_name().unwrap().to_str().unwrap())
