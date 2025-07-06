@@ -1,23 +1,9 @@
-use clap::{Parser, ValueEnum};
+use clap::Parser;
+use dep::output::OutputType;
 use std::path::PathBuf;
 use vfs::{PhysicalFS, VfsPath};
 
 /// CLI arguments
-#[derive(ValueEnum, Clone)]
-enum OutputFormat {
-    Dot,
-    Json,
-}
-
-impl std::fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            OutputFormat::Dot => "dot",
-            OutputFormat::Json => "json",
-        };
-        write!(f, "{}", s)
-    }
-}
 
 #[derive(Parser)]
 #[command(
@@ -59,8 +45,8 @@ struct Args {
     output: PathBuf,
 
     /// Output format (dot or json)
-    #[arg(long, value_enum, default_value_t = OutputFormat::Dot)]
-    format: OutputFormat,
+    #[arg(long, value_enum, default_value_t = OutputType::Dot)]
+    format: OutputType,
 
     /// Limit worker threads
     #[arg(long)]
@@ -125,10 +111,7 @@ fn main() -> anyhow::Result<()> {
         let kind = filtered[e.source()].kind.clone();
         counts.entry(kind).or_default().1 += 1;
     }
-    let output_str = match args.format {
-        OutputFormat::Dot => dep::graph_to_dot(&filtered),
-        OutputFormat::Json => dep::graph_to_json(&filtered),
-    };
+    let output_str = dep::output::graph_to_string(args.format, &filtered);
     std::fs::write(&args.output, &output_str)?;
     println!("Saving {} file {}", args.format, args.output.display());
     for kind in &[
