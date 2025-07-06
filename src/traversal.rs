@@ -1,35 +1,46 @@
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use std::path::Path;
+use bstr::ByteSlice;
+use gix_ignore::{glob::pattern::Case, search::Match, Search};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use vfs::{VfsFileType, VfsPath};
 
 use crate::{LogLevel, Logger};
 
-fn load_gitignore(root: &VfsPath) -> anyhow::Result<Option<Gitignore>> {
-    if let Ok(path) = root.join(".gitignore") {
-        if path.exists()? {
-            let contents = path.read_to_string()?;
-            let mut builder = GitignoreBuilder::new("");
-            for line in contents.lines() {
-                let _ = builder.add_line(None, line);
-            }
-            let gi = builder.build()?;
-            return Ok(Some(gi));
-        }
-    }
-    Ok(None)
-}
-
 /// Recursively collect all files starting from `root` while respecting `.gitignore`.
 
 pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<VfsPath>> {
-    let gitignore = match load_gitignore(root) {
-        Ok(v) => v,
-        Err(e) => {
-            logger.log(LogLevel::Error, &format!("failed to read .gitignore: {e}"));
-            None
-        }
-    };
     let root_str = root.as_str().trim_end_matches('/');
+    let root_path = if root_str.is_empty() { Path::new("/") } else { Path::new(root_str) };
+
+    let mut search = Search::default();
+    let mut visited_dirs: HashSet<String> = HashSet::new();
+
+    fn ignored(search: &Search, mut rel: &str, mut is_dir: bool) -> bool {
+        loop {
+            if let Some(Match { pattern, .. }) =
+                search.pattern_matching_relative_path(rel.as_bytes().as_bstr(), Some(is_dir), Case::Sensitive)
+            {
+                return !pattern.is_negative();
+            }
+            if let Some(pos) = rel.rfind('/') {
+                rel = &rel[..pos];
+                is_dir = true;
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    // Load root .gitignore if present
+    if let Ok(gi_path) = root.join(".gitignore") {
+        if gi_path.exists().unwrap_or(false) {
+            if let Ok(contents) = gi_path.read_to_string() {
+                search.add_patterns_buffer(contents.as_bytes(), PathBuf::from(gi_path.as_str()), Some(root_path));
+            }
+        }
+    }
+
     let mut files = Vec::new();
     let walk = match root.walk_dir() {
         Ok(w) => w,
@@ -46,11 +57,24 @@ pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<
                 continue;
             }
         };
+
+        let parent = path.parent();
+        if visited_dirs.insert(parent.as_str().to_string()) {
+            if let Ok(gi) = parent.join(".gitignore") {
+                if gi.exists().unwrap_or(false) {
+                    if let Ok(contents) = gi.read_to_string() {
+                        search.add_patterns_buffer(contents.as_bytes(), PathBuf::from(gi.as_str()), Some(root_path));
+                    }
+                }
+            }
+        }
+
         let rel = path
             .as_str()
             .strip_prefix(root_str)
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
+
         let meta = match path.metadata() {
             Ok(m) => m,
             Err(e) => {
@@ -58,17 +82,15 @@ pub fn collect_files(root: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<
                 continue;
             }
         };
+
         if meta.file_type != VfsFileType::File {
             continue;
         }
-        if let Some(gi) = &gitignore {
-            if gi
-                .matched_path_or_any_parents(Path::new(rel), false)
-                .is_ignore()
-            {
-                continue;
-            }
+
+        if ignored(&search, rel, false) {
+            continue;
         }
+
         files.push(path);
     }
     Ok(files)
@@ -145,5 +167,29 @@ mod tests {
         assert!(names.contains(&".gitignore"));
         assert!(!names.contains(&"b.js"));
         assert!(!names.contains(&"c.js"));
+    }
+
+    #[test]
+    fn test_nested_gitignore() {
+        let fs = TestFS::new([
+            (".gitignore", "/a.js\n"),
+            ("a.js", ""),
+            ("b.js", ""),
+            ("sub/.gitignore", "b.js\n"),
+            ("sub/a.js", ""),
+            ("sub/b.js", ""),
+            ("sub/c.js", ""),
+        ]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let files = collect_files(&root, &logger).unwrap();
+        let paths: Vec<_> = files.iter().map(|p| p.as_str()).collect();
+        assert!(paths.contains(&"/b.js"));
+        assert!(paths.contains(&"/.gitignore"));
+        assert!(paths.contains(&"/sub/.gitignore"));
+        assert!(paths.contains(&"/sub/a.js"));
+        assert!(paths.contains(&"/sub/c.js"));
+        assert!(!paths.contains(&"/a.js"));
+        assert!(!paths.contains(&"/sub/b.js"));
     }
 }
