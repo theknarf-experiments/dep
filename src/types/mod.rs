@@ -2,7 +2,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
 use vfs::VfsPath;
 
-use crate::{Logger, Node, NodeKind, EdgeType};
+use crate::{EdgeType, Logger, Node, NodeKind};
 
 #[derive(Debug)]
 pub struct GraphCtx {
@@ -30,8 +30,9 @@ pub trait Parser: Send + Sync {
 }
 
 pub mod html;
-pub mod js;
 pub mod index;
+pub mod js;
+pub mod mdx;
 pub mod monorepo;
 pub mod package_json;
 pub mod package_util;
