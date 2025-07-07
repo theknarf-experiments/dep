@@ -11,6 +11,11 @@ use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConf
 
 pub(crate) const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
 
+/// Return true if the extension corresponds to a file type that has a parser.
+pub(crate) fn is_code_ext(ext: &str) -> bool {
+    JS_EXTENSIONS.contains(&ext) || matches!(ext, "mdx" | "html")
+}
+
 pub(crate) fn is_node_builtin(name: &str) -> bool {
     let n = name.strip_prefix("node:").unwrap_or(name);
     matches!(
@@ -215,7 +220,7 @@ impl Parser for JsParser {
                         .extension()
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
-                    let kind = if JS_EXTENSIONS.contains(&ext) {
+                    let kind = if is_code_ext(ext) {
                         None
                     } else {
                         Some(NodeKind::Asset)
@@ -235,7 +240,7 @@ impl Parser for JsParser {
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
+                let kind = if is_code_ext(ext) {
                     None
                 } else {
                     Some(NodeKind::Asset)

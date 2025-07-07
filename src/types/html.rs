@@ -4,7 +4,7 @@ use vfs::VfsPath;
 
 use crate::LogLevel;
 use crate::types::js::{
-    JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
+    is_code_ext, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Edge, Parser};
 use crate::{Node, NodeKind, EdgeType};
@@ -59,7 +59,7 @@ impl Parser for HtmlParser {
                         .extension()
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
-                    let kind = if JS_EXTENSIONS.contains(&ext) {
+                    let kind = if is_code_ext(ext) {
                         None
                     } else {
                         Some(NodeKind::Asset)
@@ -79,7 +79,7 @@ impl Parser for HtmlParser {
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
+                let kind = if is_code_ext(ext) {
                     None
                 } else {
                     Some(NodeKind::Asset)

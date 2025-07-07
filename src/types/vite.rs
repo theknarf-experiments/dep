@@ -2,7 +2,7 @@ use regex::Regex;
 use std::path::Path;
 use vfs::{VfsFileType, VfsPath};
 
-use crate::types::js::JS_EXTENSIONS;
+use crate::types::js::{is_code_ext, JS_EXTENSIONS};
 use crate::types::{Context, Edge, Parser};
 use crate::{EdgeType, LogLevel, Node, NodeKind};
 
@@ -97,7 +97,7 @@ impl Parser for ViteParser {
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
+                let kind = if is_code_ext(ext) {
                     None
                 } else {
                     Some(NodeKind::Asset)
@@ -174,5 +174,51 @@ mod tests {
             .find(|i| graph[*i].name == "assets/logo.png" && graph[*i].kind == Some(NodeKind::Asset))
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_logo).is_some());
+    }
+
+    #[test]
+    fn test_vite_glob_mdx_unified() {
+        let fs = TestFS::new([
+            (
+                "src/blog/index.tsx",
+                "const posts = import.meta.glob('./*/index.mdx', { eager: true }) as any;",
+            ),
+            ("src/blog/test-post/index.mdx", "# Post1"),
+            ("src/blog/macos-gif/index.mdx", "# Post2"),
+        ]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
+
+        let index_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "src/blog/index.tsx" && graph[*i].kind == Some(NodeKind::File))
+            .unwrap();
+
+        let post1_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "src/blog/test-post/index.mdx" && graph[*i].kind == Some(NodeKind::File))
+            .unwrap();
+
+        let post2_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "src/blog/macos-gif/index.mdx" && graph[*i].kind == Some(NodeKind::File))
+            .unwrap();
+
+        assert!(graph.find_edge(index_idx, post1_idx).is_some());
+        assert!(graph.find_edge(index_idx, post2_idx).is_some());
+
+        let dup_post1: Vec<_> = graph
+            .node_indices()
+            .filter(|i| graph[*i].name == "src/blog/test-post/index.mdx")
+            .collect();
+        assert_eq!(dup_post1.len(), 1);
+
+        let dup_post2: Vec<_> = graph
+            .node_indices()
+            .filter(|i| graph[*i].name == "src/blog/macos-gif/index.mdx")
+            .collect();
+        assert_eq!(dup_post2.len(), 1);
     }
 }
