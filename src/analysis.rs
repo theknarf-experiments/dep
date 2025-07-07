@@ -43,7 +43,8 @@ pub fn filter_graph(
         if ignore.contains(node.name.as_str()) {
             continue;
         }
-        let keep = match node.kind {
+        let kind = node.kind.clone().unwrap_or(NodeKind::File);
+        let keep = match kind {
             NodeKind::External => include_external,
             NodeKind::Builtin => include_builtin,
             NodeKind::File => true,
@@ -77,16 +78,16 @@ mod tests {
         let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
         let a = g.add_node(Node {
             name: "a".into(),
-            kind: NodeKind::File,
+            kind: Some(NodeKind::File),
         });
         let b = g.add_node(Node {
             name: "b".into(),
-            kind: NodeKind::File,
+            kind: Some(NodeKind::File),
         });
         g.add_edge(a, b, EdgeType::Regular);
         let _c = g.add_node(Node {
             name: "c".into(),
-            kind: NodeKind::File,
+            kind: Some(NodeKind::File),
         });
         prune_unconnected(&mut g);
         assert!(g.node_indices().all(|i| g[i].name != "c"));
@@ -104,11 +105,11 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let folder_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo" && graph[*i].kind == NodeKind::Folder)
+            .find(|i| graph[*i].name == "foo" && graph[*i].kind == Some(NodeKind::Folder))
             .unwrap();
         let file_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(folder_idx, file_idx).is_some());
 
@@ -130,11 +131,11 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let js_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let css_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "style.css" && graph[*i].kind == NodeKind::Asset)
+            .find(|i| graph[*i].name == "style.css" && graph[*i].kind == Some(NodeKind::Asset))
             .unwrap();
         assert!(graph.find_edge(js_idx, css_idx).is_some());
 
@@ -186,12 +187,12 @@ mod tests {
             include_packages in any::<bool>(),
         ) {
             let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
-            let file = g.add_node(Node { name: "file.js".into(), kind: NodeKind::File });
-            let ext = g.add_node(Node { name: "ext".into(), kind: NodeKind::External });
-            let builtin = g.add_node(Node { name: "builtin".into(), kind: NodeKind::Builtin });
-            let folder = g.add_node(Node { name: "folder".into(), kind: NodeKind::Folder });
-            let asset = g.add_node(Node { name: "asset.css".into(), kind: NodeKind::Asset });
-            let pkg = g.add_node(Node { name: "pkg".into(), kind: NodeKind::Package });
+            let file = g.add_node(Node { name: "file.js".into(), kind: Some(NodeKind::File) });
+            let ext = g.add_node(Node { name: "ext".into(), kind: Some(NodeKind::External) });
+            let builtin = g.add_node(Node { name: "builtin".into(), kind: Some(NodeKind::Builtin) });
+            let folder = g.add_node(Node { name: "folder".into(), kind: Some(NodeKind::Folder) });
+            let asset = g.add_node(Node { name: "asset.css".into(), kind: Some(NodeKind::Asset) });
+            let pkg = g.add_node(Node { name: "pkg".into(), kind: Some(NodeKind::Package) });
             g.add_edge(file, ext, EdgeType::Regular);
             g.add_edge(file, builtin, EdgeType::Regular);
             g.add_edge(file, folder, EdgeType::Regular);
@@ -208,12 +209,12 @@ mod tests {
                 &[],
             );
 
-            prop_assert!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::File));
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::External), include_external);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Builtin), include_builtin);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Folder), include_folders);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Asset), include_assets);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Package), include_packages);
+            prop_assert!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::File)));
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::External)), include_external);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::Builtin)), include_builtin);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::Folder)), include_folders);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::Asset)), include_assets);
+            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == Some(NodeKind::Package)), include_packages);
             let expected_edges = include_external as usize
                 + include_builtin as usize
                 + include_folders as usize

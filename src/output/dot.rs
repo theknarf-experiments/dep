@@ -2,9 +2,8 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 
 use crate::{Node, NodeKind, EdgeType};
-
-fn node_attrs(kind: &NodeKind) -> (&'static str, Option<&'static str>) {
-    match kind {
+fn node_attrs(kind: Option<&NodeKind>) -> (&'static str, Option<&'static str>) {
+    match kind.unwrap_or(&NodeKind::File) {
         NodeKind::File => ("box", None),
         NodeKind::External => ("ellipse", Some("lightblue")),
         NodeKind::Builtin => ("diamond", Some("gray")),
@@ -23,7 +22,7 @@ pub fn graph_to_dot(graph: &DiGraph<Node, EdgeType>) -> String {
     let mut out = String::from("digraph {\n");
     for i in graph.node_indices() {
         let node = &graph[i];
-        let (shape, color) = node_attrs(&node.kind);
+        let (shape, color) = node_attrs(node.kind.as_ref());
         let label = escape_label(&node.name);
         out.push_str(&format!(
             "    {} [label=\"{}\", shape={}",

@@ -88,16 +88,16 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)
+            .find(|i| graph[*i].name == "a" && graph[*i].kind == Some(crate::NodeKind::Package))
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b" && graph[*i].kind == crate::NodeKind::Package)
+            .find(|i| graph[*i].name == "b" && graph[*i].kind == Some(crate::NodeKind::Package))
             .unwrap();
         let main_idx = graph
             .node_indices()
             .find(|i| {
-                graph[*i].name == "packages/a/index.js" && graph[*i].kind == crate::NodeKind::File
+                graph[*i].name == "packages/a/index.js" && graph[*i].kind == Some(crate::NodeKind::File)
             })
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
@@ -105,7 +105,7 @@ mod tests {
         assert!(
             graph
                 .node_indices()
-                .any(|i| graph[i].name == "ext" && graph[i].kind == crate::NodeKind::External)
-        );
+                .any(|i| graph[i].name == "ext" && graph[i].kind == Some(crate::NodeKind::External))
+            );
     }
 }

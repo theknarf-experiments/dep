@@ -54,11 +54,11 @@ impl Parser for PackageMainParser {
                     edges.push(Edge {
                         from: Node {
                             name: name.clone(),
-                            kind: NodeKind::Package,
+                            kind: Some(NodeKind::Package),
                         },
                         to: Node {
                             name: rel,
-                            kind: NodeKind::File,
+                            kind: Some(NodeKind::File),
                         },
                         kind: EdgeType::Regular,
                     });
@@ -102,14 +102,14 @@ impl Parser for PackageDepsParser {
         for (dep, ver) in deps {
             let workspace = ver.starts_with("workspace:");
             let kind = if workspace {
-                NodeKind::Package
+                Some(NodeKind::Package)
             } else {
-                NodeKind::External
+                Some(NodeKind::External)
             };
             edges.push(Edge {
                 from: Node {
                     name: name.clone(),
-                    kind: NodeKind::Package,
+                    kind: Some(NodeKind::Package),
                 },
                 to: Node {
                     name: dep.clone(),

@@ -40,11 +40,11 @@ impl Parser for IndexParser {
         Ok(vec![Edge {
             from: Node {
                 name: parent_rel.to_string(),
-                kind: NodeKind::Folder,
+                kind: Some(NodeKind::Folder),
             },
             to: Node {
                 name: rel.to_string(),
-                kind: NodeKind::File,
+                kind: Some(NodeKind::File),
             },
             kind: EdgeType::SameAs,
         }])

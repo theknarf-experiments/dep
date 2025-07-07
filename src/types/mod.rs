@@ -7,7 +7,7 @@ use crate::{EdgeType, Logger, Node, NodeKind};
 #[derive(Debug)]
 pub struct GraphCtx {
     pub graph: DiGraph<Node, EdgeType>,
-    pub nodes: HashMap<(String, NodeKind), NodeIndex>,
+    pub nodes: HashMap<(String, Option<NodeKind>), NodeIndex>,
 }
 
 pub struct Context<'a> {

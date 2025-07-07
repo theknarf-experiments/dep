@@ -107,11 +107,11 @@ fn main() -> anyhow::Result<()> {
     use std::collections::HashMap;
     let mut counts: HashMap<NodeKind, (usize, usize)> = HashMap::new();
     for idx in filtered.node_indices() {
-        let kind = filtered[idx].kind.clone();
+        let kind = filtered[idx].kind.clone().unwrap_or(NodeKind::File);
         counts.entry(kind).or_default().0 += 1;
     }
     for e in filtered.edge_references() {
-        let kind = filtered[e.source()].kind.clone();
+        let kind = filtered[e.source()].kind.clone().unwrap_or(NodeKind::File);
         counts.entry(kind).or_default().1 += 1;
     }
     let output_str = dep::output::graph_to_string(args.format, &filtered);

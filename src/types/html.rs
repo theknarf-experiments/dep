@@ -4,7 +4,7 @@ use vfs::VfsPath;
 
 use crate::LogLevel;
 use crate::types::js::{
-    JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
+    is_code_ext, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Edge, Parser};
 use crate::{Node, NodeKind, EdgeType};
@@ -42,7 +42,7 @@ impl Parser for HtmlParser {
         let mut edges = Vec::new();
         let from_node = Node {
             name: rel.to_string(),
-            kind: NodeKind::File,
+            kind: Some(NodeKind::File),
         };
         let re = Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).unwrap();
         for cap in re.captures_iter(&src) {
@@ -59,10 +59,10 @@ impl Parser for HtmlParser {
                         .extension()
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
-                    let kind = if JS_EXTENSIONS.contains(&ext) {
-                        NodeKind::File
+                    let kind = if is_code_ext(ext) {
+                        None
                     } else {
-                        NodeKind::Asset
+                        Some(NodeKind::Asset)
                     };
                     (rel, kind)
                 } else {
@@ -79,20 +79,20 @@ impl Parser for HtmlParser {
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
-                    NodeKind::File
+                let kind = if is_code_ext(ext) {
+                    None
                 } else {
-                    NodeKind::Asset
+                    Some(NodeKind::Asset)
                 };
                 (rel, kind)
             } else if is_node_builtin(&spec) {
-                (spec.clone(), NodeKind::Builtin)
+                (spec.clone(), Some(NodeKind::Builtin))
             } else {
-                (spec.clone(), NodeKind::External)
+                (spec.clone(), Some(NodeKind::External))
             };
             let to_node = Node {
                 name: target_str.clone(),
-                kind: kind.clone(),
+                kind,
             };
             edges.push(Edge {
                 from: from_node.clone(),
@@ -122,11 +122,11 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let html_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.html" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.html" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let js_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "app.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "app.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(html_idx, js_idx).is_some());
     }

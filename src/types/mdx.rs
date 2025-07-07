@@ -3,7 +3,7 @@ use std::path::Path;
 use vfs::VfsPath;
 
 use crate::types::js::{
-    JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
+    is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Edge, Parser};
 use crate::{EdgeType, LogLevel, Node, NodeKind};
@@ -41,7 +41,7 @@ impl Parser for MdxParser {
             .trim_start_matches('/');
         let from_node = Node {
             name: rel.to_string(),
-            kind: NodeKind::File,
+            kind: Some(NodeKind::File),
         };
         let mut edges = Vec::new();
         let re = Regex::new(r#"^\s*import\s+(?:[^'\"]*?from\s+)?['\"]([^'\"]+)['\"]"#).unwrap();
@@ -56,16 +56,7 @@ impl Parser for MdxParser {
                         .unwrap_or(target.as_str())
                         .trim_start_matches('/')
                         .to_string();
-                    let ext = Path::new(target.as_str())
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
-                    let kind = if JS_EXTENSIONS.contains(&ext) {
-                        NodeKind::File
-                    } else {
-                        NodeKind::Asset
-                    };
-                    (rel, kind)
+                    (rel, None)
                 } else {
                     continue;
                 }
@@ -76,24 +67,15 @@ impl Parser for MdxParser {
                     .unwrap_or(target.as_str())
                     .trim_start_matches('/')
                     .to_string();
-                let ext = Path::new(target.as_str())
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
-                    NodeKind::File
-                } else {
-                    NodeKind::Asset
-                };
-                (rel, kind)
+                (rel, None)
             } else if is_node_builtin(&spec) {
-                (spec.clone(), NodeKind::Builtin)
+                (spec.clone(), Some(NodeKind::Builtin))
             } else {
-                (spec.clone(), NodeKind::External)
+                (spec.clone(), Some(NodeKind::External))
             };
             let to_node = Node {
                 name: target_str.clone(),
-                kind: kind.clone(),
+                kind,
             };
             edges.push(Edge {
                 from: from_node.clone(),
@@ -122,11 +104,11 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let mdx_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.mdx" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.mdx" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let foo_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(mdx_idx, foo_idx).is_some());
     }
