@@ -47,7 +47,7 @@ impl std::fmt::Display for NodeKind {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Node {
     pub name: String,
-    pub kind: NodeKind,
+    pub kind: Option<NodeKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
@@ -70,13 +70,13 @@ pub(crate) fn ensure_folders(
                 accum.push('/');
             }
             accum.push_str(comp.as_os_str().to_str().unwrap());
-            let key = (accum.clone(), NodeKind::Folder);
+            let key = (accum.clone(), Some(NodeKind::Folder));
             let idx = if let Some(&i) = data.nodes.get(&key) {
                 i
             } else {
                 let i = data.graph.add_node(Node {
                     name: accum.clone(),
-                    kind: NodeKind::Folder,
+                    kind: Some(NodeKind::Folder),
                 });
                 data.nodes.insert(key.clone(), i);
                 i
@@ -161,10 +161,10 @@ pub fn build_dependency_graph(
         nodes: HashMap::new(),
     };
     let root_idx = {
-        let key = ("".to_string(), NodeKind::Folder);
+        let key = ("".to_string(), Some(NodeKind::Folder));
         let idx = data.graph.add_node(Node {
             name: "".to_string(),
-            kind: NodeKind::Folder,
+            kind: Some(NodeKind::Folder),
         });
         data.nodes.insert(key, idx);
         idx
@@ -178,13 +178,13 @@ pub fn build_dependency_graph(
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
         let parent_idx = ensure_folders(rel, &mut data, root_idx);
-        let key = (rel.to_string(), NodeKind::File);
+        let key = (rel.to_string(), Some(NodeKind::File));
         let idx = if let Some(&i) = data.nodes.get(&key) {
             i
         } else {
             let i = data.graph.add_node(Node {
                 name: rel.to_string(),
-                kind: NodeKind::File,
+                kind: Some(NodeKind::File),
             });
             data.nodes.insert(key, i);
             i
@@ -196,7 +196,7 @@ pub fn build_dependency_graph(
 
     let ensure_node = |n: &Node, d: &mut types::GraphCtx| -> NodeIndex {
         match n.kind {
-            NodeKind::File | NodeKind::Asset => {
+            Some(NodeKind::File) | Some(NodeKind::Asset) => {
                 let parent_idx = ensure_folders(&n.name, d, root_idx);
                 let key = (n.name.clone(), n.kind.clone());
                 let idx = if let Some(&i) = d.nodes.get(&key) {
@@ -210,6 +210,21 @@ pub fn build_dependency_graph(
                     d.graph.add_edge(parent_idx, idx, EdgeType::Regular);
                 }
                 idx
+            }
+            None => {
+                // try to reuse existing node with any known kind
+                if let Some((&(_, _), &idx)) = d
+                    .nodes
+                    .iter()
+                    .find(|((name, _), _)| name == &n.name)
+                {
+                    idx
+                } else {
+                    let key = (n.name.clone(), None);
+                    let i = d.graph.add_node(n.clone());
+                    d.nodes.insert(key, i);
+                    i
+                }
             }
             _ => {
                 let key = (n.name.clone(), n.kind.clone());
@@ -259,11 +274,11 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.js" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
     }
@@ -287,11 +302,11 @@ mod tests {
             let util_rel = format!("lib/util.{ext_b}");
             let main_idx = graph
                 .node_indices()
-                .find(|i| graph[*i].name == main_rel && graph[*i].kind == NodeKind::File)
+                .find(|i| graph[*i].name == main_rel && graph[*i].kind == Some(NodeKind::File))
                 .unwrap();
             let util_idx = graph
                 .node_indices()
-                .find(|i| graph[*i].name == util_rel && graph[*i].kind == NodeKind::File)
+                .find(|i| graph[*i].name == util_rel && graph[*i].kind == Some(NodeKind::File))
                 .unwrap();
             prop_assert!(graph.find_edge(main_idx, util_idx).is_some());
             prop_assert!(!graph.node_indices().any(|i| graph[i].name.contains("ignored")));

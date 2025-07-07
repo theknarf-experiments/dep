@@ -102,11 +102,11 @@ mod tests {
 
         let idx_index = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let idx_target = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_target).is_some());
     }
@@ -128,11 +128,11 @@ mod tests {
 
         let idx_index = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let idx_target = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_target).is_some());
     }
@@ -155,20 +155,20 @@ mod tests {
 
         let idx_a = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let idx_b = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
         let idx_c = graph
             .node_indices()
-            .find(|i| graph[*i].name == "lib/c.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "lib/c.ts" && graph[*i].kind == Some(NodeKind::File))
             .unwrap();
 
         let file_nodes: Vec<_> = graph
             .node_indices()
-            .filter(|i| graph[*i].kind == NodeKind::File)
+            .filter(|i| graph[*i].kind == Some(NodeKind::File))
             .collect();
         assert_eq!(file_nodes.len(), 3);
 
