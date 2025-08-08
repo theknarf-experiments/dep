@@ -2,56 +2,17 @@ use regex::Regex;
 use std::path::Path;
 use vfs::VfsPath;
 
+use crate::types::util::{
+    JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
+};
 use crate::types::{Context, Edge, Parser};
+use crate::{EdgeType, Node, NodeKind};
 use crate::{LogLevel, Logger};
-use crate::{Node, NodeKind, EdgeType};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
 use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConfig};
 
-pub(crate) const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
-
-pub(crate) fn is_node_builtin(name: &str) -> bool {
-    let n = name.strip_prefix("node:").unwrap_or(name);
-    matches!(
-        n,
-        "assert"
-            | "buffer"
-            | "child_process"
-            | "cluster"
-            | "console"
-            | "constants"
-            | "crypto"
-            | "dgram"
-            | "dns"
-            | "domain"
-            | "events"
-            | "fs"
-            | "http"
-            | "https"
-            | "module"
-            | "net"
-            | "os"
-            | "path"
-            | "process"
-            | "punycode"
-            | "querystring"
-            | "readline"
-            | "repl"
-            | "stream"
-            | "string_decoder"
-            | "timers"
-            | "tls"
-            | "tty"
-            | "url"
-            | "util"
-            | "v8"
-            | "vm"
-            | "zlib"
-    )
-}
-
-pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Result<Module> {
+fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Result<Module> {
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(file, src.into());
     let syntax = match ext {
@@ -65,7 +26,7 @@ pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Resu
 }
 
 /// Parse a JS/TS file and return the list of relative imports.
-pub(crate) fn parse_file(path: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<String>> {
+fn parse_file(path: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<String>> {
     let src = match path.read_to_string() {
         Ok(s) => s,
         Err(e) => {
@@ -90,7 +51,7 @@ pub(crate) fn parse_file(path: &VfsPath, logger: &dyn Logger) -> anyhow::Result<
 }
 
 /// Collect import specifiers from a parsed module.
-pub(crate) fn collect_imports(module: &Module) -> Vec<String> {
+fn collect_imports(module: &Module) -> Vec<String> {
     let mut imports = Vec::new();
     for item in &module.body {
         if let ModuleItem::ModuleDecl(decl) = item {
@@ -111,67 +72,6 @@ pub(crate) fn collect_imports(module: &Module) -> Vec<String> {
         }
     }
     imports
-}
-
-pub(crate) fn resolve_relative_import(dir: &VfsPath, spec: &str) -> Option<VfsPath> {
-    if let Ok(base) = dir.join(spec) {
-        if base.exists().ok()? {
-            return Some(base);
-        }
-        let p = Path::new(spec);
-        if p.extension().is_none() {
-            for ext in JS_EXTENSIONS {
-                if let Ok(candidate) = dir.join(format!("{spec}.{}", ext)) {
-                    if candidate.exists().ok()? {
-                        return Some(candidate);
-                    }
-                }
-            }
-            for ext in JS_EXTENSIONS {
-                if let Ok(candidate) = base.join(format!("index.{}", ext)) {
-                    if candidate.exists().ok()? {
-                        return Some(candidate);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn resolve_alias_import(aliases: &[(String, VfsPath)], spec: &str) -> Option<VfsPath> {
-    for (alias, base) in aliases {
-        if spec == alias || spec.starts_with(&format!("{}/", alias)) {
-            let rest = if spec == alias {
-                ""
-            } else {
-                &spec[alias.len() + 1..]
-            };
-            if let Ok(candidate_base) = base.join(rest) {
-                if candidate_base.exists().ok()? {
-                    return Some(candidate_base);
-                }
-                let p = Path::new(rest);
-                if p.extension().is_none() {
-                    for ext in JS_EXTENSIONS {
-                        if let Ok(candidate) = base.join(format!("{rest}.{}", ext)) {
-                            if candidate.exists().ok()? {
-                                return Some(candidate);
-                            }
-                        }
-                    }
-                    for ext in JS_EXTENSIONS {
-                        if let Ok(candidate) = candidate_base.join(format!("index.{}", ext)) {
-                            if candidate.exists().ok()? {
-                                return Some(candidate);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 pub struct JsParser;
@@ -264,6 +164,7 @@ impl Parser for JsParser {
 mod tests {
     use super::*;
     use crate::test_util::TestFS;
+    use crate::types::util::{JS_EXTENSIONS, resolve_relative_import};
     use proptest::prelude::*;
     use swc_common::FileName;
 

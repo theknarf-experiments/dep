@@ -246,7 +246,7 @@ pub fn build_dependency_graph(
 mod tests {
     use super::*;
     use crate::test_util::TestFS;
-    use crate::types::js::JS_EXTENSIONS;
+    use crate::types::util::JS_EXTENSIONS;
     use proptest::prelude::*;
 
     #[test]

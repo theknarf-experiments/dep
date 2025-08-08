@@ -2,7 +2,7 @@ use regex::Regex;
 use std::path::Path;
 use vfs::{VfsFileType, VfsPath};
 
-use crate::types::js::JS_EXTENSIONS;
+use crate::types::util::JS_EXTENSIONS;
 use crate::types::{Context, Edge, Parser};
 use crate::{EdgeType, LogLevel, Node, NodeKind};
 

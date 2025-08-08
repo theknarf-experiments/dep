@@ -1,9 +1,9 @@
 use std::path::Path;
 use vfs::VfsPath;
 
+use crate::types::util::JS_EXTENSIONS;
 use crate::types::{Context, Edge, Parser};
-use crate::types::js::JS_EXTENSIONS;
-use crate::{Node, NodeKind, EdgeType};
+use crate::{EdgeType, Node, NodeKind};
 
 pub struct IndexParser;
 
