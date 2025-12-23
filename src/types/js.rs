@@ -55,8 +55,14 @@ pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Resu
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(file, src.into());
     let syntax = match ext {
-        "ts" | "tsx" | "mts" | "cts" => Syntax::Typescript(TsConfig::default()),
-        _ => Syntax::Es(EsConfig::default()),
+        "ts" | "tsx" | "mts" | "cts" => Syntax::Typescript(TsConfig {
+            tsx: ext == "tsx",
+            ..Default::default()
+        }),
+        _ => Syntax::Es(EsConfig {
+            jsx: ext == "jsx",
+            ..Default::default()
+        }),
     };
     let mut parser = SwcParser::new(syntax, StringInput::from(&*fm), None);
     parser
@@ -407,5 +413,49 @@ mod tests {
             let dir = root.join("dir").unwrap();
             prop_assert!(resolve_relative_import(&dir, "./foo").is_some());
         }
+    }
+
+    #[test]
+    fn test_tsx_parsing_with_jsx() {
+        use crate::test_util::TestFS;
+        let fs = TestFS::new([
+            ("a.tsx", "import './b';\nexport const App = () => <div>Hello</div>;"),
+            ("b.ts", ""),
+        ]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
+        let a_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "a.tsx")
+            .unwrap();
+        let b_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "b.ts")
+            .unwrap();
+        assert!(graph.find_edge(a_idx, b_idx).is_some(), "Edge from a.tsx to b.ts missing");
+    }
+
+    #[test]
+    fn test_jsx_parsing() {
+        use crate::test_util::TestFS;
+        let fs = TestFS::new([
+            ("a.jsx", "import './b';\nexport const App = () => <div>Hello</div>;"),
+            ("b.js", ""),
+        ]);
+        let root = fs.root();
+        let logger = crate::EmptyLogger;
+        let walk = crate::WalkBuilder::new(&root).build();
+        let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
+        let a_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "a.jsx")
+            .unwrap();
+        let b_idx = graph
+            .node_indices()
+            .find(|i| graph[*i].name == "b.js")
+            .unwrap();
+        assert!(graph.find_edge(a_idx, b_idx).is_some(), "Edge from a.jsx to b.js missing");
     }
 }
