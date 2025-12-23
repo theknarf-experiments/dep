@@ -1,8 +1,8 @@
 use regex::Regex;
 use std::path::Path;
+use std::sync::OnceLock;
 use vfs::VfsPath;
 
-use crate::LogLevel;
 use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
@@ -23,16 +23,7 @@ impl Parser for HtmlParser {
     }
 
     fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
-        let src = match path.read_to_string() {
-            Ok(s) => s,
-            Err(e) => {
-                ctx.logger.log(
-                    LogLevel::Error,
-                    &format!("failed to read {}: {e}", path.as_str()),
-                );
-                return Ok(Vec::new());
-            }
-        };
+        let src = path.read_to_string()?;
         let root_str = ctx.root.as_str().trim_end_matches('/');
         let rel = path
             .as_str()
@@ -40,7 +31,8 @@ impl Parser for HtmlParser {
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
         let mut edges = Vec::new();
-        let re = Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).unwrap();
+        static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
+        let re = SCRIPT_RE.get_or_init(|| Regex::new(r#"<script[^>]*src=[\"']([^\"']+)[\"'][^>]*>"#).expect("invalid regex"));
         for cap in re.captures_iter(&src) {
             let spec = cap[1].to_string();
             let (target_str, to_type) = if spec.starts_with('.') {

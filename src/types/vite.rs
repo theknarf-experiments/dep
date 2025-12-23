@@ -1,10 +1,11 @@
 use regex::Regex;
 use std::path::Path;
+use std::sync::OnceLock;
 use vfs::{VfsFileType, VfsPath};
 
 use crate::types::js::JS_EXTENSIONS;
 use crate::types::{Context, Edge, Parser};
-use crate::{EdgeType, LogLevel, NodeKind};
+use crate::{EdgeType, NodeKind};
 
 fn expand_glob(base: &VfsPath, pat: &str) -> anyhow::Result<Vec<VfsPath>> {
     let pattern = match pat.strip_prefix("./") {
@@ -59,17 +60,9 @@ impl Parser for ViteParser {
     }
 
     fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
-        let src = match path.read_to_string() {
-            Ok(s) => s,
-            Err(e) => {
-                ctx.logger.log(
-                    LogLevel::Error,
-                    &format!("failed to read {}: {e}", path.as_str()),
-                );
-                return Ok(Vec::new());
-            }
-        };
-        let re = Regex::new(r#"import\.meta\.glob(?:Eager)?\(\s*['"]([^'"]+)['"]"#).unwrap();
+        let src = path.read_to_string()?;
+        static GLOB_RE: OnceLock<Regex> = OnceLock::new();
+        let re = GLOB_RE.get_or_init(|| Regex::new(r#"import\.meta\.glob(?:Eager)?\(\s*['"]([^'"]+)['"]"#).expect("invalid regex"));
         let dir = path.parent();
         let root_str = ctx.root.as_str().trim_end_matches('/');
         let rel = path

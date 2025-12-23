@@ -1,9 +1,10 @@
 use regex::Regex;
 use std::path::Path;
+use std::sync::OnceLock;
 use vfs::VfsPath;
 
 use crate::types::{Context, Edge, Parser};
-use crate::{LogLevel, Logger};
+use crate::Logger;
 use crate::{NodeKind, EdgeType};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
@@ -71,24 +72,18 @@ pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Resu
 }
 
 /// Parse a JS/TS file and return the list of relative imports.
-pub(crate) fn parse_file(path: &VfsPath, logger: &dyn Logger) -> anyhow::Result<Vec<String>> {
-    let src = match path.read_to_string() {
-        Ok(s) => s,
-        Err(e) => {
-            logger.log(
-                LogLevel::Error,
-                &format!("failed to read {}: {e}", path.as_str()),
-            );
-            return Ok(Vec::new());
-        }
-    };
+pub(crate) fn parse_file(path: &VfsPath, _logger: &dyn Logger) -> anyhow::Result<Vec<String>> {
+    let src = path.read_to_string()?;
     let ext = Path::new(path.as_str())
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("");
     let module = parse_module(&src, ext, FileName::Custom(path.as_str().into()))?;
     let mut imports = collect_imports(&module);
-    let re = Regex::new(r#"require\(\s*['\"]([^'\"]+)['\"]\s*\)"#).unwrap();
+    
+    static REQUIRE_RE: OnceLock<Regex> = OnceLock::new();
+    let re = REQUIRE_RE.get_or_init(|| Regex::new(r#"require\(\s*['\"]([^'\"]+)['\"]\s*\)"#).expect("invalid regex"));
+    
     for cap in re.captures_iter(&src) {
         imports.push(cap[1].to_string());
     }
@@ -201,7 +196,7 @@ impl Parser for JsParser {
             .strip_prefix(root_str)
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
-        let imports = parse_file(path, ctx.logger).unwrap_or_default();
+        let imports = parse_file(path, ctx.logger)?;
         let mut edges = Vec::new();
         let dir = path.parent();
         for i in imports {
@@ -293,8 +288,8 @@ mod tests {
         let root = fs.root();
         let missing = root.join("missing.js").unwrap();
         let logger = crate::EmptyLogger;
-        let imports = parse_file(&missing, &logger).unwrap();
-        assert!(imports.is_empty());
+        let res = parse_file(&missing, &logger);
+        assert!(res.is_err());
     }
 
     #[test]

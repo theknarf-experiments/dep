@@ -139,7 +139,7 @@ pub(crate) fn ensure_folders(
             if !accum.is_empty() {
                 accum.push('/');
             }
-            accum.push_str(comp.as_os_str().to_str().unwrap());
+            accum.push_str(&comp.as_os_str().to_string_lossy());
             let idx = ensure_node(&accum, data);
             attach_type(idx, NodeKind::Folder, data);
             if data.graph.find_edge(parent_idx, idx).is_none() {
@@ -205,11 +205,23 @@ pub fn build_dependency_graph(
                         match p.parse(&path_clone, ctx) {
                             Ok(mut es) => {
                                 if !es.is_empty() {
-                                    let mut lock = edges.lock().unwrap();
-                                    lock.extend(es.drain(..));
+                                    match edges.lock() {
+                                        Ok(mut lock) => lock.extend(es.drain(..)),
+                                        Err(e) => {
+                                            ctx.logger.log(
+                                                LogLevel::Error,
+                                                &format!("failed to lock edges mutex: {}", e),
+                                            );
+                                        }
+                                    }
                                 }
                             }
-                            Err(_) => {}
+                            Err(e) => {
+                                ctx.logger.log(
+                                    LogLevel::Error,
+                                    &format!("failed to parse {}: {}", path_clone.as_str(), e),
+                                );
+                            }
                         }
                     }
                 }
@@ -253,7 +265,10 @@ pub fn build_dependency_graph(
     }
 
     // Process edges from parsers
-    for e in edges.lock().unwrap().iter() {
+    let edges_lock = edges
+        .lock()
+        .map_err(|e| anyhow::anyhow!("failed to lock edges mutex: {}", e))?;
+    for e in edges_lock.iter() {
         // Ensure 'from' node exists and attach type if specified
         let from_idx = ensure_node(&e.from, &mut data);
         if let Some(kind) = e.from_type {

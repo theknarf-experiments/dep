@@ -1,12 +1,13 @@
 use regex::Regex;
 use std::path::Path;
+use std::sync::OnceLock;
 use vfs::VfsPath;
 
 use crate::types::js::{
     JS_EXTENSIONS, is_node_builtin, resolve_alias_import, resolve_relative_import,
 };
 use crate::types::{Context, Edge, Parser};
-use crate::{EdgeType, LogLevel, NodeKind};
+use crate::{EdgeType, NodeKind};
 
 pub struct MdxParser;
 
@@ -23,16 +24,7 @@ impl Parser for MdxParser {
     }
 
     fn parse(&self, path: &VfsPath, ctx: &Context) -> anyhow::Result<Vec<Edge>> {
-        let src = match path.read_to_string() {
-            Ok(s) => s,
-            Err(e) => {
-                ctx.logger.log(
-                    LogLevel::Error,
-                    &format!("failed to read {}: {e}", path.as_str()),
-                );
-                return Ok(Vec::new());
-            }
-        };
+        let src = path.read_to_string()?;
         let root_str = ctx.root.as_str().trim_end_matches('/');
         let rel = path
             .as_str()
@@ -40,7 +32,8 @@ impl Parser for MdxParser {
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
         let mut edges = Vec::new();
-        let re = Regex::new(r#"^\s*import\s+(?:[^'\"]*?from\s+)?['\"]([^'\"]+)['\"]"#).unwrap();
+        static IMPORT_RE: OnceLock<Regex> = OnceLock::new();
+        let re = IMPORT_RE.get_or_init(|| Regex::new(r#"^\s*import\s+(?:[^'\"]*?from\s+)?['\"]([^'\"]+)['\"]"#).expect("invalid regex"));
         let dir = path.parent();
         for cap in re.captures_iter(&src) {
             let spec = cap[1].to_string();
