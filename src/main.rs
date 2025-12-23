@@ -1,8 +1,27 @@
-use clap::Parser;
+use clap::{Parser, CommandFactory, FromArgMatches};
+use clap::parser::ValueSource;
 use dep::output::OutputType;
 use dep::{LogLevel, Logger};
+use serde::Deserialize;
 use std::path::PathBuf;
 use vfs::{PhysicalFS, VfsPath};
+
+#[derive(Deserialize)]
+struct FileConfig {
+    include_external: Option<bool>,
+    include_builtins: Option<bool>,
+    include_folders: Option<bool>,
+    include_assets: Option<bool>,
+    include_packages: Option<bool>,
+    ignore_nodes: Option<Vec<String>>,
+    ignore_paths: Option<Vec<String>>,
+    output: Option<PathBuf>,
+    format: Option<OutputType>,
+    workers: Option<usize>,
+    verbose: Option<bool>,
+    color: Option<bool>,
+    prune: Option<bool>,
+}
 
 /// CLI arguments
 
@@ -75,7 +94,48 @@ fn default_color() -> bool {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let matches = Args::command().get_matches();
+    let mut args = Args::from_arg_matches(&matches)?;
+
+    // Check for config file
+    let config_path = args.path.join("dep.toml");
+    if config_path.exists() {
+        let contents = std::fs::read_to_string(&config_path)?;
+        let config: FileConfig = toml::from_str(&contents)?;
+
+        macro_rules! merge_arg {
+            ($field:ident) => {
+                if matches.value_source(stringify!($field)) != Some(ValueSource::CommandLine) 
+                   && matches.value_source(stringify!($field)) != Some(ValueSource::EnvVariable) {
+                    if let Some(val) = config.$field {
+                        args.$field = val;
+                    }
+                }
+            };
+        }
+
+        merge_arg!(include_external);
+        merge_arg!(include_builtins);
+        merge_arg!(include_folders);
+        merge_arg!(include_assets);
+        merge_arg!(include_packages);
+        merge_arg!(ignore_nodes);
+        merge_arg!(ignore_paths);
+        merge_arg!(output);
+        merge_arg!(format);
+        
+        if matches.value_source("workers") != Some(ValueSource::CommandLine) 
+           && matches.value_source("workers") != Some(ValueSource::EnvVariable) {
+            if let Some(val) = config.workers {
+                args.workers = Some(val);
+            }
+        }
+
+        merge_arg!(verbose);
+        merge_arg!(color);
+        merge_arg!(prune);
+    }
+
     let root: VfsPath = PhysicalFS::new(&args.path).into();
     let logger = dep::ConsoleLogger {
         color: args.color,

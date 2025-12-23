@@ -2,8 +2,10 @@ pub mod dot;
 pub mod json;
 
 use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OutputType {
     Dot,
     Json,
