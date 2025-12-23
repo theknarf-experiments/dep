@@ -103,25 +103,9 @@ impl<'a> Walk<'a> {
         }
 
         let mut files = Vec::new();
-        let walk = match root.walk_dir() {
-            Ok(w) => w,
-            Err(e) => {
-                logger.log(
-                    LogLevel::Error,
-                    &format!("failed to walk {}: {e}", root.as_str()),
-                );
-                return Ok(files);
-            }
-        };
-        for entry in walk {
-            let path = match entry {
-                Ok(p) => p,
-                Err(e) => {
-                    logger.log(LogLevel::Error, &format!("walk error: {e}"));
-                    continue;
-                }
-            };
+        let mut stack = vec![root.clone()];
 
+        while let Some(path) = stack.pop() {
             let rel = path
                 .as_str()
                 .strip_prefix(root_str)
@@ -139,10 +123,20 @@ impl<'a> Walk<'a> {
                 }
             };
 
-            if meta.file_type == VfsFileType::Directory {
-                if ignored(&search, rel, true) {
-                    continue;
-                }
+            let is_dir = meta.file_type == VfsFileType::Directory;
+            
+            // Skip ignored paths. 
+            // Note: For the root path itself (rel is empty), we typically don't skip unless explicitly ignored?
+            // But ignored() logic should handle empty rel string if appropriate, or we can skip check for root.
+            if !rel.is_empty() && ignored(&search, rel, is_dir) {
+                continue;
+            }
+
+            if is_dir {
+                // If this is a directory, we need to:
+                // 1. Check for .gitignore and update search patterns
+                // 2. Read children and add to stack
+
                 if let Ok(gi) = path.join(".gitignore") {
                     if gi.exists().unwrap_or(false) {
                         if let Ok(contents) = gi.read_to_string() {
@@ -154,14 +148,23 @@ impl<'a> Walk<'a> {
                         }
                     }
                 }
-                continue;
-            }
 
-            if ignored(&search, rel, false) {
-                continue;
+                match path.read_dir() {
+                    Ok(it) => {
+                        for child in it {
+                            stack.push(child);
+                        }
+                    }
+                    Err(e) => {
+                        logger.log(
+                            LogLevel::Error,
+                            &format!("failed to read dir {}: {e}", path.as_str()),
+                        );
+                    }
+                }
+            } else {
+                files.push(path);
             }
-
-            files.push(path);
         }
         Ok(files)
     }
