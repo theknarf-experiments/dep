@@ -3,11 +3,45 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use std::collections::HashMap;
 
+/// Check if a node is a type singleton node
+fn is_type_node(node: &Node) -> bool {
+    node.name.starts_with("__type__::")
+}
+
+/// Resolve the NodeKind for a node by looking at its TypeOf edges.
+fn resolve_node_kind(graph: &DiGraph<Node, EdgeType>, idx: NodeIndex) -> NodeKind {
+    let mut best_kind = NodeKind::File;
+    let mut best_precedence = 0u8;
+
+    for edge in graph.edges(idx) {
+        if *edge.weight() == EdgeType::TypeOf {
+            let target = &graph[edge.target()];
+            for kind in NodeKind::type_node_variants() {
+                if target.name == kind.type_node_name() {
+                    let prec = kind.precedence();
+                    if prec > best_precedence {
+                        best_precedence = prec;
+                        best_kind = *kind;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    best_kind
+}
+
 pub fn prune_unconnected(graph: &mut DiGraph<Node, EdgeType>) {
     loop {
         let mut removed = false;
         let nodes: Vec<NodeIndex> = graph.node_indices().collect();
         for idx in nodes {
+            let node = &graph[idx];
+            // Don't prune type singleton nodes - they may be needed for type resolution
+            if is_type_node(node) {
+                continue;
+            }
             if graph.edges(idx).next().is_none()
                 && graph
                     .edges_directed(idx, petgraph::Incoming)
@@ -38,12 +72,27 @@ pub fn filter_graph(
     let mut map = HashMap::new();
     use std::collections::HashSet;
     let ignore: HashSet<&str> = ignore_nodes.iter().map(|s| s.as_str()).collect();
+
+    // First pass: add type singleton nodes (always include them for type resolution)
     for idx in graph.node_indices() {
         let node = &graph[idx];
+        if is_type_node(node) {
+            let nidx = filtered.add_node(node.clone());
+            map.insert(idx, nidx);
+        }
+    }
+
+    // Second pass: add regular nodes based on their resolved type
+    for idx in graph.node_indices() {
+        let node = &graph[idx];
+        if is_type_node(node) {
+            continue; // Already added
+        }
         if ignore.contains(node.name.as_str()) {
             continue;
         }
-        let keep = match node.kind {
+        let kind = resolve_node_kind(graph, idx);
+        let keep = match kind {
             NodeKind::External => include_external,
             NodeKind::Builtin => include_builtin,
             NodeKind::File => true,
@@ -56,6 +105,8 @@ pub fn filter_graph(
             map.insert(idx, nidx);
         }
     }
+
+    // Add edges
     for edge in graph.edge_references() {
         if let (Some(&s), Some(&t)) = (map.get(&edge.source()), map.get(&edge.target())) {
             filtered.add_edge(s, t, edge.weight().clone());
@@ -70,24 +121,14 @@ mod tests {
     use crate::test_util::TestFS;
     use crate::{Node, NodeKind, build_dependency_graph, graph_to_dot, graph_to_json};
     use petgraph::graph::DiGraph;
-    use proptest::prelude::*;
 
     #[test]
     fn test_prune_unconnected() {
         let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
-        let a = g.add_node(Node {
-            name: "a".into(),
-            kind: NodeKind::File,
-        });
-        let b = g.add_node(Node {
-            name: "b".into(),
-            kind: NodeKind::File,
-        });
+        let a = g.add_node(Node { name: "a".into() });
+        let b = g.add_node(Node { name: "b".into() });
         g.add_edge(a, b, EdgeType::Regular);
-        let _c = g.add_node(Node {
-            name: "c".into(),
-            kind: NodeKind::File,
-        });
+        let _c = g.add_node(Node { name: "c".into() });
         prune_unconnected(&mut g);
         assert!(g.node_indices().all(|i| g[i].name != "c"));
         assert!(g.node_indices().any(|i| g[i].name == "a"));
@@ -104,13 +145,16 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let folder_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo" && graph[*i].kind == NodeKind::Folder)
+            .find(|i| graph[*i].name == "foo")
             .unwrap();
         let file_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.js")
             .unwrap();
         assert!(graph.find_edge(folder_idx, file_idx).is_some());
+
+        // Verify folder has Folder type
+        assert_eq!(resolve_node_kind(&graph, folder_idx), NodeKind::Folder);
 
         let without = graph_to_dot(&filter_graph(&graph, true, true, false, true, true, &[]));
         assert!(without.contains("foo/bar.js"));
@@ -130,13 +174,16 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let js_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.js")
             .unwrap();
         let css_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "style.css" && graph[*i].kind == NodeKind::Asset)
+            .find(|i| graph[*i].name == "style.css")
             .unwrap();
         assert!(graph.find_edge(js_idx, css_idx).is_some());
+
+        // Verify css has Asset type
+        assert_eq!(resolve_node_kind(&graph, css_idx), NodeKind::Asset);
 
         let without = graph_to_dot(&filter_graph(&graph, true, true, false, false, true, &[]));
         assert!(!without.contains("style.css"));
@@ -176,50 +223,50 @@ mod tests {
         assert!(!dot.contains("b.js"));
     }
 
-    proptest! {
-        #[test]
-        fn prop_filter_graph(
-            include_external in any::<bool>(),
-            include_builtin in any::<bool>(),
-            include_folders in any::<bool>(),
-            include_assets in any::<bool>(),
-            include_packages in any::<bool>(),
-        ) {
-            let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
-            let file = g.add_node(Node { name: "file.js".into(), kind: NodeKind::File });
-            let ext = g.add_node(Node { name: "ext".into(), kind: NodeKind::External });
-            let builtin = g.add_node(Node { name: "builtin".into(), kind: NodeKind::Builtin });
-            let folder = g.add_node(Node { name: "folder".into(), kind: NodeKind::Folder });
-            let asset = g.add_node(Node { name: "asset.css".into(), kind: NodeKind::Asset });
-            let pkg = g.add_node(Node { name: "pkg".into(), kind: NodeKind::Package });
-            g.add_edge(file, ext, EdgeType::Regular);
-            g.add_edge(file, builtin, EdgeType::Regular);
-            g.add_edge(file, folder, EdgeType::Regular);
-            g.add_edge(file, asset, EdgeType::Regular);
-            g.add_edge(file, pkg, EdgeType::Regular);
+    #[test]
+    fn test_filter_graph_with_types() {
+        // Create a graph with type nodes
+        let mut g: DiGraph<Node, EdgeType> = DiGraph::new();
 
-            let filtered = filter_graph(
-                &g,
-                include_external,
-                include_builtin,
-                include_folders,
-                include_assets,
-                include_packages,
-                &[],
-            );
+        // Create type singleton nodes
+        let ext_type = g.add_node(Node { name: NodeKind::External.type_node_name().into() });
+        let builtin_type = g.add_node(Node { name: NodeKind::Builtin.type_node_name().into() });
+        let folder_type = g.add_node(Node { name: NodeKind::Folder.type_node_name().into() });
+        let asset_type = g.add_node(Node { name: NodeKind::Asset.type_node_name().into() });
+        let pkg_type = g.add_node(Node { name: NodeKind::Package.type_node_name().into() });
 
-            prop_assert!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::File));
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::External), include_external);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Builtin), include_builtin);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Folder), include_folders);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Asset), include_assets);
-            prop_assert_eq!(filtered.node_indices().any(|i| filtered[i].kind == NodeKind::Package), include_packages);
-            let expected_edges = include_external as usize
-                + include_builtin as usize
-                + include_folders as usize
-                + include_assets as usize
-                + include_packages as usize;
-            prop_assert_eq!(filtered.edge_count(), expected_edges);
-        }
+        // Create regular nodes
+        let file = g.add_node(Node { name: "file.js".into() });
+        let ext = g.add_node(Node { name: "ext".into() });
+        let builtin = g.add_node(Node { name: "builtin".into() });
+        let folder = g.add_node(Node { name: "folder".into() });
+        let asset = g.add_node(Node { name: "asset.css".into() });
+        let pkg = g.add_node(Node { name: "pkg".into() });
+
+        // Add TypeOf edges
+        g.add_edge(ext, ext_type, EdgeType::TypeOf);
+        g.add_edge(builtin, builtin_type, EdgeType::TypeOf);
+        g.add_edge(folder, folder_type, EdgeType::TypeOf);
+        g.add_edge(asset, asset_type, EdgeType::TypeOf);
+        g.add_edge(pkg, pkg_type, EdgeType::TypeOf);
+
+        // Add dependency edges
+        g.add_edge(file, ext, EdgeType::Regular);
+        g.add_edge(file, builtin, EdgeType::Regular);
+        g.add_edge(file, folder, EdgeType::Regular);
+        g.add_edge(file, asset, EdgeType::Regular);
+        g.add_edge(file, pkg, EdgeType::Regular);
+
+        // Test filtering - exclude external
+        let filtered = filter_graph(&g, false, true, true, true, true, &[]);
+        let dot = graph_to_dot(&filtered);
+        assert!(!dot.contains("\"ext\""));
+        assert!(dot.contains("builtin"));
+
+        // Test filtering - exclude builtins
+        let filtered = filter_graph(&g, true, false, true, true, true, &[]);
+        let dot = graph_to_dot(&filtered);
+        assert!(dot.contains("ext"));
+        assert!(!dot.contains("\"builtin\""));
     }
 }

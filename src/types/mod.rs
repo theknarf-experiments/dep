@@ -7,7 +7,10 @@ use crate::{EdgeType, Logger, Node, NodeKind};
 #[derive(Debug)]
 pub struct GraphCtx {
     pub graph: DiGraph<Node, EdgeType>,
-    pub nodes: HashMap<(String, NodeKind), NodeIndex>,
+    /// Maps canonical node names to their graph indices
+    pub nodes: HashMap<String, NodeIndex>,
+    /// Maps NodeKind variants to their singleton type node indices
+    pub type_nodes: HashMap<NodeKind, NodeIndex>,
 }
 
 pub struct Context<'a> {
@@ -18,9 +21,13 @@ pub struct Context<'a> {
 
 #[derive(Clone, Debug)]
 pub struct Edge {
-    pub from: Node,
-    pub to: Node,
+    pub from: String,
+    pub to: String,
     pub kind: EdgeType,
+    /// Optional type to attach to the 'from' node (creates a TypeOf edge)
+    pub from_type: Option<NodeKind>,
+    /// Optional type to attach to the 'to' node (creates a TypeOf edge)
+    pub to_type: Option<NodeKind>,
 }
 
 pub trait Parser: Send + Sync {

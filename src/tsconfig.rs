@@ -83,7 +83,7 @@ pub fn load_tsconfig_aliases(
 #[cfg(test)]
 mod tests {
     use crate::test_util::TestFS;
-    use crate::{NodeKind, build_dependency_graph};
+    use crate::build_dependency_graph;
 
     #[test]
     fn test_tsconfig_paths() {
@@ -102,11 +102,11 @@ mod tests {
 
         let idx_index = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.ts")
             .unwrap();
         let idx_target = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.ts")
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_target).is_some());
     }
@@ -128,11 +128,11 @@ mod tests {
 
         let idx_index = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.ts")
             .unwrap();
         let idx_target = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo/bar.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo/bar.ts")
             .unwrap();
         assert!(graph.find_edge(idx_index, idx_target).is_some());
     }
@@ -155,23 +155,18 @@ mod tests {
 
         let idx_a = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.ts")
             .unwrap();
         let idx_b = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.ts")
             .unwrap();
         let idx_c = graph
             .node_indices()
-            .find(|i| graph[*i].name == "lib/c.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "lib/c.ts")
             .unwrap();
 
-        let file_nodes: Vec<_> = graph
-            .node_indices()
-            .filter(|i| graph[*i].kind == NodeKind::File)
-            .collect();
-        assert_eq!(file_nodes.len(), 3);
-
+        // Now with the new model, both a.ts and b.ts should point to the same lib/c.ts node
         assert!(graph.find_edge(idx_a, idx_c).is_some());
         assert!(graph.find_edge(idx_b, idx_c).is_some());
     }

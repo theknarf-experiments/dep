@@ -1,8 +1,14 @@
-use petgraph::graph::DiGraph;
+use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use serde::Serialize;
 
-use crate::{Node, EdgeType};
+use crate::{Node, NodeKind, EdgeType};
+
+#[derive(Serialize)]
+struct JsonNode {
+    name: String,
+    kind: NodeKind,
+}
 
 #[derive(Serialize)]
 struct JsonEdge {
@@ -14,21 +20,83 @@ struct JsonEdge {
 
 #[derive(Serialize)]
 struct JsonGraph {
-    nodes: Vec<Node>,
+    nodes: Vec<JsonNode>,
     edges: Vec<JsonEdge>,
+}
+
+/// Check if a node is a type singleton node (should be hidden from output)
+fn is_type_node(node: &Node) -> bool {
+    node.name.starts_with("__type__::")
+}
+
+/// Resolve the NodeKind for a node by looking at its TypeOf edges.
+fn resolve_node_kind(graph: &DiGraph<Node, EdgeType>, idx: NodeIndex) -> NodeKind {
+    let mut best_kind = NodeKind::File;
+    let mut best_precedence = 0u8;
+
+    for edge in graph.edges(idx) {
+        if *edge.weight() == EdgeType::TypeOf {
+            let target = &graph[edge.target()];
+            for kind in NodeKind::type_node_variants() {
+                if target.name == kind.type_node_name() {
+                    let prec = kind.precedence();
+                    if prec > best_precedence {
+                        best_precedence = prec;
+                        best_kind = *kind;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    best_kind
 }
 
 /// Convert a dependency graph to JSON format.
 pub fn graph_to_json(graph: &DiGraph<Node, EdgeType>) -> String {
-    let nodes: Vec<Node> = graph.node_indices().map(|i| graph[i].clone()).collect();
+    use std::collections::HashMap;
+
+    // Build a mapping from old indices to new indices (excluding type nodes)
+    let mut index_map: HashMap<usize, usize> = HashMap::new();
+    let mut nodes: Vec<JsonNode> = Vec::new();
+
+    for i in graph.node_indices() {
+        let node = &graph[i];
+        if is_type_node(node) {
+            continue;
+        }
+        let kind = resolve_node_kind(graph, i);
+        index_map.insert(i.index(), nodes.len());
+        nodes.push(JsonNode {
+            name: node.name.clone(),
+            kind,
+        });
+    }
+
     let edges: Vec<JsonEdge> = graph
         .edge_references()
-        .map(|e| JsonEdge {
-            from: e.source().index(),
-            to: e.target().index(),
-            kind: e.weight().clone(),
+        .filter(|e| {
+            // Skip TypeOf edges
+            if *e.weight() == EdgeType::TypeOf {
+                return false;
+            }
+            // Skip edges involving type nodes
+            let src = &graph[e.source()];
+            let tgt = &graph[e.target()];
+            !is_type_node(src) && !is_type_node(tgt)
+        })
+        .filter_map(|e| {
+            let from = index_map.get(&e.source().index())?;
+            let to = index_map.get(&e.target().index())?;
+            Some(JsonEdge {
+                from: *from,
+                to: *to,
+                kind: e.weight().clone(),
+            })
         })
         .collect();
+
     serde_json::to_string_pretty(&JsonGraph { nodes, edges }).unwrap()
 }
 

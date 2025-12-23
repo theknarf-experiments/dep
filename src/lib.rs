@@ -20,14 +20,54 @@ use tsconfig::load_tsconfig_aliases;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+/// Node types used for categorization and rendering.
+/// These become singleton nodes in the graph that regular nodes point to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum NodeKind {
+    /// Default type - no edge to type node needed
     File,
     External,
     Builtin,
     Folder,
     Asset,
     Package,
+}
+
+impl NodeKind {
+    /// Returns all type variants that have singleton nodes (excludes File which is the default)
+    pub fn type_node_variants() -> &'static [NodeKind] {
+        &[
+            NodeKind::Package,
+            NodeKind::Folder,
+            NodeKind::Builtin,
+            NodeKind::External,
+            NodeKind::Asset,
+        ]
+    }
+
+    /// Returns the canonical name for this type's singleton node
+    pub fn type_node_name(&self) -> &'static str {
+        match self {
+            NodeKind::File => "__type__::file",
+            NodeKind::External => "__type__::external",
+            NodeKind::Builtin => "__type__::builtin",
+            NodeKind::Folder => "__type__::folder",
+            NodeKind::Asset => "__type__::asset",
+            NodeKind::Package => "__type__::package",
+        }
+    }
+
+    /// Precedence for type resolution (higher = wins). File is 0 (default).
+    pub fn precedence(&self) -> u8 {
+        match self {
+            NodeKind::File => 0,
+            NodeKind::Asset => 1,
+            NodeKind::External => 2,
+            NodeKind::Builtin => 3,
+            NodeKind::Folder => 4,
+            NodeKind::Package => 5,
+        }
+    }
 }
 
 impl std::fmt::Display for NodeKind {
@@ -44,18 +84,48 @@ impl std::fmt::Display for NodeKind {
     }
 }
 
+/// A node in the dependency graph, identified by its canonical name only.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Node {
     pub name: String,
-    pub kind: NodeKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum EdgeType {
     Regular,
     SameAs,
+    /// Edge from a node to its type singleton node
+    TypeOf,
 }
 
+/// Ensure a node exists in the graph, returning its index.
+pub(crate) fn ensure_node(name: &str, data: &mut types::GraphCtx) -> NodeIndex {
+    if let Some(&idx) = data.nodes.get(name) {
+        idx
+    } else {
+        let idx = data.graph.add_node(Node {
+            name: name.to_string(),
+        });
+        data.nodes.insert(name.to_string(), idx);
+        idx
+    }
+}
+
+/// Attach a type to a node by creating a TypeOf edge to the type singleton.
+pub(crate) fn attach_type(node_idx: NodeIndex, kind: NodeKind, data: &mut types::GraphCtx) {
+    if kind == NodeKind::File {
+        return; // File is the default, no edge needed
+    }
+    if let Some(&type_idx) = data.type_nodes.get(&kind) {
+        // Only add the edge if it doesn't already exist
+        if data.graph.find_edge(node_idx, type_idx).is_none() {
+            data.graph.add_edge(node_idx, type_idx, EdgeType::TypeOf);
+        }
+    }
+}
+
+/// Ensure all folder nodes exist for the given path and link them hierarchically.
+/// Also attaches Folder type to each folder node.
 pub(crate) fn ensure_folders(
     rel: &str,
     data: &mut types::GraphCtx,
@@ -70,17 +140,8 @@ pub(crate) fn ensure_folders(
                 accum.push('/');
             }
             accum.push_str(comp.as_os_str().to_str().unwrap());
-            let key = (accum.clone(), NodeKind::Folder);
-            let idx = if let Some(&i) = data.nodes.get(&key) {
-                i
-            } else {
-                let i = data.graph.add_node(Node {
-                    name: accum.clone(),
-                    kind: NodeKind::Folder,
-                });
-                data.nodes.insert(key.clone(), i);
-                i
-            };
+            let idx = ensure_node(&accum, data);
+            attach_type(idx, NodeKind::Folder, data);
             if data.graph.find_edge(parent_idx, idx).is_none() {
                 data.graph.add_edge(parent_idx, idx, EdgeType::Regular);
             }
@@ -159,18 +220,24 @@ pub fn build_dependency_graph(
     let mut data = types::GraphCtx {
         graph: DiGraph::new(),
         nodes: HashMap::new(),
-    };
-    let root_idx = {
-        let key = ("".to_string(), NodeKind::Folder);
-        let idx = data.graph.add_node(Node {
-            name: "".to_string(),
-            kind: NodeKind::Folder,
-        });
-        data.nodes.insert(key, idx);
-        idx
+        type_nodes: HashMap::new(),
     };
 
+    // Create singleton type nodes for all NodeKind variants (except File)
+    for kind in NodeKind::type_node_variants() {
+        let idx = data.graph.add_node(Node {
+            name: kind.type_node_name().to_string(),
+        });
+        data.type_nodes.insert(*kind, idx);
+    }
+
+    // Create root folder node
+    let root_idx = ensure_node("", &mut data);
+    attach_type(root_idx, NodeKind::Folder, &mut data);
+
     let root_str = root.as_str().trim_end_matches('/');
+
+    // Create nodes for all parsed files
     for path in &parsed_files {
         let rel = path
             .as_str()
@@ -178,55 +245,40 @@ pub fn build_dependency_graph(
             .unwrap_or(path.as_str())
             .trim_start_matches('/');
         let parent_idx = ensure_folders(rel, &mut data, root_idx);
-        let key = (rel.to_string(), NodeKind::File);
-        let idx = if let Some(&i) = data.nodes.get(&key) {
-            i
-        } else {
-            let i = data.graph.add_node(Node {
-                name: rel.to_string(),
-                kind: NodeKind::File,
-            });
-            data.nodes.insert(key, i);
-            i
-        };
+        let idx = ensure_node(rel, &mut data);
+        // Files don't need a TypeOf edge - File is the default
         if data.graph.find_edge(parent_idx, idx).is_none() {
             data.graph.add_edge(parent_idx, idx, EdgeType::Regular);
         }
     }
 
-    let ensure_node = |n: &Node, d: &mut types::GraphCtx| -> NodeIndex {
-        match n.kind {
-            NodeKind::File | NodeKind::Asset => {
-                let parent_idx = ensure_folders(&n.name, d, root_idx);
-                let key = (n.name.clone(), n.kind.clone());
-                let idx = if let Some(&i) = d.nodes.get(&key) {
-                    i
-                } else {
-                    let i = d.graph.add_node(n.clone());
-                    d.nodes.insert(key, i);
-                    i
-                };
-                if d.graph.find_edge(parent_idx, idx).is_none() {
-                    d.graph.add_edge(parent_idx, idx, EdgeType::Regular);
-                }
-                idx
-            }
-            _ => {
-                let key = (n.name.clone(), n.kind.clone());
-                if let Some(&i) = d.nodes.get(&key) {
-                    i
-                } else {
-                    let i = d.graph.add_node(n.clone());
-                    d.nodes.insert(key, i);
-                    i
-                }
-            }
-        }
-    };
-
+    // Process edges from parsers
     for e in edges.lock().unwrap().iter() {
+        // Ensure 'from' node exists and attach type if specified
         let from_idx = ensure_node(&e.from, &mut data);
-        let to_idx = ensure_node(&e.to, &mut data);
+        if let Some(kind) = e.from_type {
+            attach_type(from_idx, kind, &mut data);
+        }
+
+        // Ensure 'to' node exists with folder structure if it looks like a path
+        let to_idx = if e.to.contains('/') || e.to.contains('.') {
+            // Looks like a file path - ensure folder structure
+            let parent_idx = ensure_folders(&e.to, &mut data, root_idx);
+            let idx = ensure_node(&e.to, &mut data);
+            if data.graph.find_edge(parent_idx, idx).is_none() {
+                data.graph.add_edge(parent_idx, idx, EdgeType::Regular);
+            }
+            idx
+        } else {
+            // Simple name (like a package or external dep)
+            ensure_node(&e.to, &mut data)
+        };
+
+        if let Some(kind) = e.to_type {
+            attach_type(to_idx, kind, &mut data);
+        }
+
+        // Add the actual dependency edge
         data.graph.add_edge(from_idx, to_idx, e.kind.clone());
     }
 
@@ -259,11 +311,11 @@ mod tests {
         let graph = build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.js")
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.js")
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
     }
@@ -287,14 +339,14 @@ mod tests {
             let util_rel = format!("lib/util.{ext_b}");
             let main_idx = graph
                 .node_indices()
-                .find(|i| graph[*i].name == main_rel && graph[*i].kind == NodeKind::File)
+                .find(|i| graph[*i].name == main_rel)
                 .unwrap();
             let util_idx = graph
                 .node_indices()
-                .find(|i| graph[*i].name == util_rel && graph[*i].kind == NodeKind::File)
+                .find(|i| graph[*i].name == util_rel)
                 .unwrap();
             prop_assert!(graph.find_edge(main_idx, util_idx).is_some());
-            prop_assert!(!graph.node_indices().any(|i| graph[i].name.contains("ignored")));
+            prop_assert!(!graph.node_indices().any(|i| graph[i].name.contains("ignored") && !graph[i].name.starts_with("__type__")));
         }
     }
 }

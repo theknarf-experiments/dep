@@ -3,7 +3,7 @@ use vfs::VfsPath;
 
 use crate::types::{Context, Edge, Parser};
 use crate::types::js::JS_EXTENSIONS;
-use crate::{Node, NodeKind, EdgeType};
+use crate::{NodeKind, EdgeType};
 
 pub struct IndexParser;
 
@@ -38,15 +38,11 @@ impl Parser for IndexParser {
             .unwrap_or(parent.as_str())
             .trim_start_matches('/');
         Ok(vec![Edge {
-            from: Node {
-                name: parent_rel.to_string(),
-                kind: NodeKind::Folder,
-            },
-            to: Node {
-                name: rel.to_string(),
-                kind: NodeKind::File,
-            },
+            from: parent_rel.to_string(),
+            to: rel.to_string(),
             kind: EdgeType::SameAs,
+            from_type: Some(NodeKind::Folder),
+            to_type: None, // File is default
         }])
     }
 }

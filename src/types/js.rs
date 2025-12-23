@@ -4,7 +4,7 @@ use vfs::VfsPath;
 
 use crate::types::{Context, Edge, Parser};
 use crate::{LogLevel, Logger};
-use crate::{Node, NodeKind, EdgeType};
+use crate::{NodeKind, EdgeType};
 use swc_common::{FileName, SourceMap, sync::Lrc};
 use swc_ecma_ast::{Module, ModuleDecl, ModuleItem};
 use swc_ecma_parser::{EsConfig, Parser as SwcParser, StringInput, Syntax, TsConfig};
@@ -197,13 +197,9 @@ impl Parser for JsParser {
             .trim_start_matches('/');
         let imports = parse_file(path, ctx.logger).unwrap_or_default();
         let mut edges = Vec::new();
-        let from_node = Node {
-            name: rel.to_string(),
-            kind: NodeKind::File,
-        };
         let dir = path.parent();
         for i in imports {
-            let (target_str, kind) = if i.starts_with('.') {
+            let (target_str, to_type) = if i.starts_with('.') {
                 if let Some(target) = resolve_relative_import(&dir, &i) {
                     let rel = target
                         .as_str()
@@ -215,12 +211,12 @@ impl Parser for JsParser {
                         .extension()
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
-                    let kind = if JS_EXTENSIONS.contains(&ext) {
-                        NodeKind::File
+                    let to_type = if JS_EXTENSIONS.contains(&ext) {
+                        None // File is default
                     } else {
-                        NodeKind::Asset
+                        Some(NodeKind::Asset)
                     };
-                    (rel, kind)
+                    (rel, to_type)
                 } else {
                     continue;
                 }
@@ -235,25 +231,23 @@ impl Parser for JsParser {
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                let kind = if JS_EXTENSIONS.contains(&ext) {
-                    NodeKind::File
+                let to_type = if JS_EXTENSIONS.contains(&ext) {
+                    None // File is default
                 } else {
-                    NodeKind::Asset
+                    Some(NodeKind::Asset)
                 };
-                (rel, kind)
+                (rel, to_type)
             } else if is_node_builtin(&i) {
-                (i.clone(), NodeKind::Builtin)
+                (i.clone(), Some(NodeKind::Builtin))
             } else {
-                (i.clone(), NodeKind::External)
-            };
-            let to_node = Node {
-                name: target_str.clone(),
-                kind: kind.clone(),
+                (i.clone(), Some(NodeKind::External))
             };
             edges.push(Edge {
-                from: from_node.clone(),
-                to: to_node,
+                from: rel.to_string(),
+                to: target_str,
                 kind: EdgeType::Regular,
+                from_type: None, // File is default
+                to_type,
             });
         }
         Ok(edges)
@@ -325,15 +319,15 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.ts")
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.ts" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.ts")
             .unwrap();
         let c_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "c.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "c.js")
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
         assert!(graph.find_edge(a_idx, c_idx).is_some());
@@ -348,11 +342,11 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let js_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.js")
             .unwrap();
         let asset_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "logo.svg" && graph[*i].kind == NodeKind::Asset)
+            .find(|i| graph[*i].name == "logo.svg")
             .unwrap();
         assert!(graph.find_edge(js_idx, asset_idx).is_some());
     }
@@ -373,15 +367,15 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let main_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "index.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "index.js")
             .unwrap();
         let foo_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "foo.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "foo.js")
             .unwrap();
         let bar_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "bar.js" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "bar.js")
             .unwrap();
         assert!(graph.find_edge(main_idx, foo_idx).is_some());
         assert!(graph.find_edge(main_idx, bar_idx).is_some());
@@ -396,11 +390,11 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a.mjs" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "a.mjs")
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b.cjs" && graph[*i].kind == NodeKind::File)
+            .find(|i| graph[*i].name == "b.cjs")
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
     }

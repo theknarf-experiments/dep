@@ -102,16 +102,52 @@ fn main() -> anyhow::Result<()> {
         args.include_packages,
         &args.ignore_nodes,
     );
-    use dep::NodeKind;
+    use dep::{NodeKind, EdgeType};
     use petgraph::visit::EdgeRef;
     use std::collections::HashMap;
+
+    // Helper to resolve node kind from TypeOf edges
+    fn resolve_kind(graph: &petgraph::graph::DiGraph<dep::Node, dep::EdgeType>, idx: petgraph::graph::NodeIndex) -> NodeKind {
+        let mut best_kind = NodeKind::File;
+        let mut best_prec = 0u8;
+        for edge in graph.edges(idx) {
+            if *edge.weight() == EdgeType::TypeOf {
+                let target = &graph[edge.target()];
+                for kind in NodeKind::type_node_variants() {
+                    if target.name == kind.type_node_name() {
+                        let prec = kind.precedence();
+                        if prec > best_prec {
+                            best_prec = prec;
+                            best_kind = *kind;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        best_kind
+    }
+
+    fn is_type_node(node: &dep::Node) -> bool {
+        node.name.starts_with("__type__::")
+    }
+
     let mut counts: HashMap<NodeKind, (usize, usize)> = HashMap::new();
     for idx in filtered.node_indices() {
-        let kind = filtered[idx].kind.clone();
+        if is_type_node(&filtered[idx]) {
+            continue;
+        }
+        let kind = resolve_kind(&filtered, idx);
         counts.entry(kind).or_default().0 += 1;
     }
     for e in filtered.edge_references() {
-        let kind = filtered[e.source()].kind.clone();
+        if *e.weight() == EdgeType::TypeOf {
+            continue;
+        }
+        if is_type_node(&filtered[e.source()]) || is_type_node(&filtered[e.target()]) {
+            continue;
+        }
+        let kind = resolve_kind(&filtered, e.source());
         counts.entry(kind).or_default().1 += 1;
     }
     let output_str = dep::output::graph_to_string(args.format, &filtered);

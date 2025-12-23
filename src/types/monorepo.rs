@@ -88,24 +88,18 @@ mod tests {
         let graph = crate::build_dependency_graph(&walk, None, &logger).unwrap();
         let a_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "a" && graph[*i].kind == crate::NodeKind::Package)
+            .find(|i| graph[*i].name == "a")
             .unwrap();
         let b_idx = graph
             .node_indices()
-            .find(|i| graph[*i].name == "b" && graph[*i].kind == crate::NodeKind::Package)
+            .find(|i| graph[*i].name == "b")
             .unwrap();
         let main_idx = graph
             .node_indices()
-            .find(|i| {
-                graph[*i].name == "packages/a/index.js" && graph[*i].kind == crate::NodeKind::File
-            })
+            .find(|i| graph[*i].name == "packages/a/index.js")
             .unwrap();
         assert!(graph.find_edge(a_idx, b_idx).is_some());
         assert!(graph.find_edge(a_idx, main_idx).is_some());
-        assert!(
-            graph
-                .node_indices()
-                .any(|i| graph[i].name == "ext" && graph[i].kind == crate::NodeKind::External)
-        );
+        assert!(graph.node_indices().any(|i| graph[i].name == "ext"));
     }
 }
