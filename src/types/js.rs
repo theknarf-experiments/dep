@@ -57,11 +57,11 @@ pub(crate) fn parse_module(src: &str, ext: &str, file: FileName) -> anyhow::Resu
     let fm = cm.new_source_file(file, src.into());
     let syntax = match ext {
         "ts" | "tsx" | "mts" | "cts" => Syntax::Typescript(TsConfig {
-            tsx: ext == "tsx",
+            tsx: true,
             ..Default::default()
         }),
         _ => Syntax::Es(EsConfig {
-            jsx: ext == "jsx",
+            jsx: true,
             ..Default::default()
         }),
     };
