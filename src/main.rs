@@ -4,6 +4,7 @@ use dep::output::OutputType;
 use dep::{LogLevel, Logger};
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::process::Command;
 use vfs::{PhysicalFS, VfsPath};
 
 #[derive(Deserialize)]
@@ -21,6 +22,7 @@ struct FileConfig {
     verbose: Option<bool>,
     color: Option<bool>,
     prune: Option<bool>,
+    sfdp: Option<bool>,
 }
 
 /// CLI arguments
@@ -87,6 +89,10 @@ struct Args {
     /// Prune nodes without edges
     #[arg(long, default_value_t = false)]
     prune: bool,
+
+    /// Run sfdp to generate SVG from dot output
+    #[arg(long, default_value_t = false)]
+    sfdp: bool,
 }
 
 fn default_color() -> bool {
@@ -134,6 +140,7 @@ fn main() -> anyhow::Result<()> {
         merge_arg!(verbose);
         merge_arg!(color);
         merge_arg!(prune);
+        merge_arg!(sfdp);
     }
 
     let root: VfsPath = PhysicalFS::new(&args.path).into();
@@ -213,6 +220,29 @@ fn main() -> anyhow::Result<()> {
     let output_str = dep::output::graph_to_string(args.format, &filtered);
     std::fs::write(&args.output, &output_str)?;
     println!("Saving {} file {}", args.format, args.output.display());
+
+    if args.sfdp {
+        // Check if sfdp is available
+        let sfdp_check = Command::new("sfdp").arg("--version").output();
+        if sfdp_check.is_err() {
+            anyhow::bail!("sfdp not found in PATH. Please install Graphviz (https://graphviz.org/)");
+        }
+
+        let svg_output = args.output.with_extension("svg");
+        let status = Command::new("sfdp")
+            .arg("-Goverlap=prism")
+            .arg("-Tsvg")
+            .arg(&args.output)
+            .arg("-o")
+            .arg(&svg_output)
+            .status()?;
+
+        if !status.success() {
+            anyhow::bail!("sfdp failed with exit code: {:?}", status.code());
+        }
+        println!("Generated SVG: {}", svg_output.display());
+    }
+
     for kind in &[
         NodeKind::File,
         NodeKind::External,
