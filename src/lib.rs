@@ -175,7 +175,7 @@ pub fn build_dependency_graph(
         Box::new(types::mdx::MdxParser),
         Box::new(types::html::HtmlParser),
     ];
-    let workers = workers.unwrap_or_else(|| num_cpus::get());
+    let workers = workers.unwrap_or_else(num_cpus::get);
     logger.log(
         LogLevel::Debug,
         &format!("using {} worker threads", workers),

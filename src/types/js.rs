@@ -122,18 +122,16 @@ pub(crate) fn resolve_relative_import(dir: &VfsPath, spec: &str) -> Option<VfsPa
         let p = Path::new(spec);
         if p.extension().is_none() {
             for ext in JS_EXTENSIONS {
-                if let Ok(candidate) = dir.join(format!("{spec}.{}", ext)) {
-                    if candidate.exists().ok()? {
+                if let Ok(candidate) = dir.join(format!("{spec}.{}", ext))
+                    && candidate.exists().ok()? {
                         return Some(candidate);
                     }
-                }
             }
             for ext in JS_EXTENSIONS {
-                if let Ok(candidate) = base.join(format!("index.{}", ext)) {
-                    if candidate.exists().ok()? {
+                if let Ok(candidate) = base.join(format!("index.{}", ext))
+                    && candidate.exists().ok()? {
                         return Some(candidate);
                     }
-                }
             }
         }
     }
@@ -155,18 +153,16 @@ pub(crate) fn resolve_alias_import(aliases: &[(String, VfsPath)], spec: &str) ->
                 let p = Path::new(rest);
                 if p.extension().is_none() {
                     for ext in JS_EXTENSIONS {
-                        if let Ok(candidate) = base.join(format!("{rest}.{}", ext)) {
-                            if candidate.exists().ok()? {
+                        if let Ok(candidate) = base.join(format!("{rest}.{}", ext))
+                            && candidate.exists().ok()? {
                                 return Some(candidate);
                             }
-                        }
                     }
                     for ext in JS_EXTENSIONS {
-                        if let Ok(candidate) = candidate_base.join(format!("index.{}", ext)) {
-                            if candidate.exists().ok()? {
+                        if let Ok(candidate) = candidate_base.join(format!("index.{}", ext))
+                            && candidate.exists().ok()? {
                                 return Some(candidate);
                             }
-                        }
                     }
                 }
             }

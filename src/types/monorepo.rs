@@ -34,17 +34,15 @@ pub fn load_monorepo_packages(root: &VfsPath, logger: &dyn Logger) -> anyhow::Re
 
 fn parse_workspace_files(root: &VfsPath) -> anyhow::Result<()> {
     // parse pnpm-workspace.yml
-    if let Ok(path) = root.join("pnpm-workspace.yml") {
-        if path.exists().unwrap_or(false) {
+    if let Ok(path) = root.join("pnpm-workspace.yml")
+        && path.exists().unwrap_or(false) {
             let _ = path.read_to_string(); // ignore errors
         }
-    }
     // parse workspaces from package.json
-    if let Ok(path) = root.join("package.json") {
-        if path.exists().unwrap_or(false) {
+    if let Ok(path) = root.join("package.json")
+        && path.exists().unwrap_or(false) {
             let _ = path.read_to_string();
         }
-    }
     Ok(())
 }
 

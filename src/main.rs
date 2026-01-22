@@ -131,11 +131,10 @@ fn main() -> anyhow::Result<()> {
         merge_arg!(format);
         
         if matches.value_source("workers") != Some(ValueSource::CommandLine) 
-           && matches.value_source("workers") != Some(ValueSource::EnvVariable) {
-            if let Some(val) = config.workers {
+           && matches.value_source("workers") != Some(ValueSource::EnvVariable)
+            && let Some(val) = config.workers {
                 args.workers = Some(val);
             }
-        }
 
         merge_arg!(verbose);
         merge_arg!(color);

@@ -41,9 +41,9 @@ impl Parser for PackageMainParser {
             return Ok(Vec::new());
         };
         let mut edges = Vec::new();
-        if let Some(main) = raw.main {
-            if let Ok(main_path) = path.parent().join(&main) {
-                if main_path.exists().unwrap_or(false) {
+        if let Some(main) = raw.main
+            && let Ok(main_path) = path.parent().join(&main)
+                && main_path.exists().unwrap_or(false) {
                     let root_str = ctx.root.as_str().trim_end_matches('/');
                     let rel = main_path
                         .as_str()
@@ -59,8 +59,6 @@ impl Parser for PackageMainParser {
                         to_type: None, // File is default
                     });
                 }
-            }
-        }
         Ok(edges)
     }
 }
@@ -89,10 +87,10 @@ impl Parser for PackageDepsParser {
 
         let mut deps = HashMap::new();
         if let Some(map) = raw.dependencies {
-            deps.extend(map.into_iter());
+            deps.extend(map);
         }
         if let Some(map) = raw.dev_dependencies {
-            deps.extend(map.into_iter());
+            deps.extend(map);
         }
 
         for (dep, ver) in deps {

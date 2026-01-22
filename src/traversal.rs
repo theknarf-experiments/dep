@@ -90,17 +90,15 @@ impl<'a> Walk<'a> {
         }
 
         // Load root .gitignore if present
-        if let Ok(gi_path) = root.join(".gitignore") {
-            if gi_path.exists().unwrap_or(false) {
-                if let Ok(contents) = gi_path.read_to_string() {
+        if let Ok(gi_path) = root.join(".gitignore")
+            && gi_path.exists().unwrap_or(false)
+                && let Ok(contents) = gi_path.read_to_string() {
                     search.add_patterns_buffer(
                         contents.as_bytes(),
                         PathBuf::from(gi_path.as_str()),
                         Some(root_path),
                     );
                 }
-            }
-        }
 
         let mut files = Vec::new();
         let mut stack = vec![root.clone()];
@@ -137,17 +135,15 @@ impl<'a> Walk<'a> {
                 // 1. Check for .gitignore and update search patterns
                 // 2. Read children and add to stack
 
-                if let Ok(gi) = path.join(".gitignore") {
-                    if gi.exists().unwrap_or(false) {
-                        if let Ok(contents) = gi.read_to_string() {
+                if let Ok(gi) = path.join(".gitignore")
+                    && gi.exists().unwrap_or(false)
+                        && let Ok(contents) = gi.read_to_string() {
                             search.add_patterns_buffer(
                                 contents.as_bytes(),
                                 PathBuf::from(gi.as_str()),
                                 Some(root_path),
                             );
                         }
-                    }
-                }
 
                 match path.read_dir() {
                     Ok(it) => {

@@ -23,8 +23,8 @@ pub fn load_tsconfig_aliases(
     root: &VfsPath,
     logger: &dyn Logger,
 ) -> anyhow::Result<Vec<(String, VfsPath)>> {
-    if let Ok(path) = root.join("tsconfig.json") {
-        if path.exists()? {
+    if let Ok(path) = root.join("tsconfig.json")
+        && path.exists()? {
             let contents = match path.read_to_string() {
                 Ok(c) => c,
                 Err(e) => {
@@ -76,7 +76,6 @@ pub fn load_tsconfig_aliases(
                 return Ok(aliases);
             }
         }
-    }
     Ok(Vec::new())
 }
 
