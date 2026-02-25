@@ -1,0 +1,15 @@
+[package]
+name = "dep-tsconfig"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+anyhow = { workspace = true }
+jsonc-parser = { version = "0.26", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+vfs = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }

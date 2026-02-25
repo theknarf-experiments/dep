@@ -1,0 +1,14 @@
+[package]
+name = "dep-parser-vite"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+regex = { workspace = true }
+glob = { workspace = true }
+vfs = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }

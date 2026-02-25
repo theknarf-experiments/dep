@@ -1,11 +1,35 @@
-use clap::{Parser, CommandFactory, FromArgMatches};
 use clap::parser::ValueSource;
-use dep::output::OutputType;
+use clap::{Parser, CommandFactory, FromArgMatches};
 use dep::{LogLevel, Logger};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::process::Command;
 use vfs::{PhysicalFS, VfsPath};
+
+#[derive(Clone, Copy, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum OutputFormat {
+    Dot,
+    Json,
+}
+
+impl From<OutputFormat> for dep_output::OutputType {
+    fn from(f: OutputFormat) -> Self {
+        match f {
+            OutputFormat::Dot => dep_output::OutputType::Dot,
+            OutputFormat::Json => dep_output::OutputType::Json,
+        }
+    }
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Dot => write!(f, "dot"),
+            OutputFormat::Json => write!(f, "json"),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct FileConfig {
@@ -17,7 +41,7 @@ struct FileConfig {
     ignore_nodes: Option<Vec<String>>,
     ignore_paths: Option<Vec<String>>,
     output: Option<PathBuf>,
-    format: Option<OutputType>,
+    format: Option<OutputFormat>,
     workers: Option<usize>,
     verbose: Option<bool>,
     color: Option<bool>,
@@ -71,8 +95,8 @@ struct Args {
     output: PathBuf,
 
     /// Output format (dot or json)
-    #[arg(long, value_enum, default_value_t = OutputType::Dot)]
-    format: OutputType,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Dot)]
+    format: OutputFormat,
 
     /// Limit worker threads
     #[arg(long)]
@@ -111,7 +135,7 @@ fn main() -> anyhow::Result<()> {
 
         macro_rules! merge_arg {
             ($field:ident) => {
-                if matches.value_source(stringify!($field)) != Some(ValueSource::CommandLine) 
+                if matches.value_source(stringify!($field)) != Some(ValueSource::CommandLine)
                    && matches.value_source(stringify!($field)) != Some(ValueSource::EnvVariable) {
                     if let Some(val) = config.$field {
                         args.$field = val;
@@ -129,8 +153,8 @@ fn main() -> anyhow::Result<()> {
         merge_arg!(ignore_paths);
         merge_arg!(output);
         merge_arg!(format);
-        
-        if matches.value_source("workers") != Some(ValueSource::CommandLine) 
+
+        if matches.value_source("workers") != Some(ValueSource::CommandLine)
            && matches.value_source("workers") != Some(ValueSource::EnvVariable)
             && let Some(val) = config.workers {
                 args.workers = Some(val);
@@ -143,7 +167,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let root: VfsPath = PhysicalFS::new(&args.path).into();
-    let logger = dep::ConsoleLogger {
+    let logger = dep_core::ConsoleLogger {
         color: args.color,
         verbose: args.verbose,
     };
@@ -168,42 +192,17 @@ fn main() -> anyhow::Result<()> {
         args.include_packages,
         &args.ignore_nodes,
     );
-    use dep::{NodeKind, EdgeType};
+    use dep_core::{NodeKind, EdgeType};
+    use dep_core::{is_type_node, resolve_node_kind};
     use petgraph::visit::EdgeRef;
     use std::collections::HashMap;
-
-    // Helper to resolve node kind from TypeOf edges
-    fn resolve_kind(graph: &petgraph::graph::DiGraph<dep::Node, dep::EdgeType>, idx: petgraph::graph::NodeIndex) -> NodeKind {
-        let mut best_kind = NodeKind::File;
-        let mut best_prec = 0u8;
-        for edge in graph.edges(idx) {
-            if *edge.weight() == EdgeType::TypeOf {
-                let target = &graph[edge.target()];
-                for kind in NodeKind::type_node_variants() {
-                    if target.name == kind.type_node_name() {
-                        let prec = kind.precedence();
-                        if prec > best_prec {
-                            best_prec = prec;
-                            best_kind = *kind;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        best_kind
-    }
-
-    fn is_type_node(node: &dep::Node) -> bool {
-        node.name.starts_with("__type__::")
-    }
 
     let mut counts: HashMap<NodeKind, (usize, usize)> = HashMap::new();
     for idx in filtered.node_indices() {
         if is_type_node(&filtered[idx]) {
             continue;
         }
-        let kind = resolve_kind(&filtered, idx);
+        let kind = resolve_node_kind(&filtered, idx);
         counts.entry(kind).or_default().0 += 1;
     }
     for e in filtered.edge_references() {
@@ -213,15 +212,15 @@ fn main() -> anyhow::Result<()> {
         if is_type_node(&filtered[e.source()]) || is_type_node(&filtered[e.target()]) {
             continue;
         }
-        let kind = resolve_kind(&filtered, e.source());
+        let kind = resolve_node_kind(&filtered, e.source());
         counts.entry(kind).or_default().1 += 1;
     }
-    let output_str = dep::output::graph_to_string(args.format, &filtered);
+    let output_type: dep_output::OutputType = args.format.into();
+    let output_str = dep_output::graph_to_string(output_type, &filtered);
     std::fs::write(&args.output, &output_str)?;
     println!("Saving {} file {}", args.format, args.output.display());
 
     if args.sfdp {
-        // Check if sfdp is available
         let sfdp_check = Command::new("sfdp").arg("--version").output();
         if sfdp_check.is_err() {
             anyhow::bail!("sfdp not found in PATH. Please install Graphviz (https://graphviz.org/)");

@@ -1,0 +1,13 @@
+[package]
+name = "dep-parser-mdx"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+vfs = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }

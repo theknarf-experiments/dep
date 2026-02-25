@@ -1,0 +1,14 @@
+[package]
+name = "dep-core"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+petgraph = { workspace = true }
+vfs = { workspace = true }
+anyhow = { workspace = true }
+colored = { workspace = true }
+serde = { workspace = true }
+
+[features]
+testutil = []

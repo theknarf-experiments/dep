@@ -1,0 +1,17 @@
+[package]
+name = "dep-parser-js"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+swc_ecma_parser = "0.145.0"
+swc_ecma_ast = "0.114.0"
+swc_common = "0.33.26"
+regex = { workspace = true }
+anyhow = { workspace = true }
+vfs = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }
+proptest = "1"

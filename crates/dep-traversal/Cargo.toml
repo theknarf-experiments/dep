@@ -1,0 +1,14 @@
+[package]
+name = "dep-traversal"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+anyhow = { workspace = true }
+gix-ignore = "0.15"
+bstr = "1"
+vfs = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }

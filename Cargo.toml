@@ -1,28 +1,60 @@
-[package]
-name = "dep"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
 
-[dependencies]
-clap = { version = "4.5.40", features = ["derive"] }
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[workspace.dependencies]
+dep-core = { path = "crates/dep-core" }
+dep-traversal = { path = "crates/dep-traversal" }
+dep-tsconfig = { path = "crates/dep-tsconfig" }
+dep-analysis = { path = "crates/dep-analysis" }
+dep-output = { path = "crates/dep-output" }
+dep-parser-js = { path = "crates/dep-parser-js" }
+dep-parser-html = { path = "crates/dep-parser-html" }
+dep-parser-mdx = { path = "crates/dep-parser-mdx" }
+dep-parser-vite = { path = "crates/dep-parser-vite" }
+dep-parser-index = { path = "crates/dep-parser-index" }
+dep-parser-package = { path = "crates/dep-parser-package" }
+dep-parser-monorepo = { path = "crates/dep-parser-monorepo" }
 petgraph = "0.8.2"
-swc_ecma_parser = "0.145.0"
-swc_ecma_ast = "0.114.0"
-swc_common = "0.33.26"
 anyhow = "1.0"
 vfs = "0.12.1"
-gix-ignore = "0.15"
-bstr = "1"
 serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = "1.0"
 regex = "1"
-serde_yaml = "0.9"
+colored = "2"
 glob = "0.3"
+
+[package]
+name = "dep"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+clap = { version = "4.5.40", features = ["derive"] }
+dep-core = { workspace = true }
+dep-traversal = { workspace = true }
+dep-tsconfig = { workspace = true }
+dep-analysis = { workspace = true }
+dep-output = { workspace = true }
+dep-parser-js = { workspace = true }
+dep-parser-html = { workspace = true }
+dep-parser-mdx = { workspace = true }
+dep-parser-vite = { workspace = true }
+dep-parser-index = { workspace = true }
+dep-parser-package = { workspace = true }
+dep-parser-monorepo = { workspace = true }
+petgraph = { workspace = true }
+anyhow = { workspace = true }
+vfs = { workspace = true }
+serde = { workspace = true }
 rayon = "1"
 num_cpus = "1"
-colored = "2"
-jsonc-parser = { version = "0.26", features = ["serde"] }
 toml = "0.8"
 
 [dev-dependencies]
 proptest = "1"
+dep-core = { workspace = true, features = ["testutil"] }

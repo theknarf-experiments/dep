@@ -1,0 +1,12 @@
+[package]
+name = "dep-parser-index"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+dep-core = { workspace = true }
+anyhow = { workspace = true }
+vfs = { workspace = true }
+
+[dev-dependencies]
+dep-core = { workspace = true, features = ["testutil"] }
